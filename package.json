@@ -1,0 +1,25 @@
+{
+  "name": "flyrank-ai",
+  "version": "1.0.0",
+  "description": "Task API — a small in-memory CRUD API for a to-do list, with Swagger UI.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MalakKrayem/flyRank-Ai.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/MalakKrayem/flyRank-Ai/issues"
+  },
+  "homepage": "https://github.com/MalakKrayem/flyRank-Ai#readme",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
