@@ -8,6 +8,8 @@ Built for **FlyRank Internship · Backend Track · Week 2 · Assignment A1**, Ja
 three seed tasks every time the server restarts. That is deliberate — see
 [The mortality experiment](#the-mortality-experiment) below.
 
+![Swagger UI listing every endpoint of the Task API](docs/swagger-ui.png)
+
 ## Requirements
 
 - [Node.js](https://nodejs.org) 18 or newer (`node -v` to check)
@@ -29,6 +31,11 @@ To use a different port: `PORT=4000 npm start`.
 
 The assignment only asks for the API and Swagger UI. This repo also includes a small React app that uses
 the same endpoints, so the CRUD cycle can be driven from a real UI instead of a docs page.
+
+![The React client listing tasks, with total/open/done counts and filters](docs/react-client.png)
+
+Task **#4** above is the one created by the Swagger screenshot further down — same server, same in-memory
+list, viewed through a different client.
 
 With the API already running in one terminal, in a second terminal:
 
@@ -125,7 +132,13 @@ predictable regardless of how much data exists.
 
 ## Swagger UI
 
-![Swagger UI showing the Task API endpoints](docs/swagger-ui.png)
+`/docs` is not just a list — every endpoint has a **Try it out** button that sends a real request. Here is
+`POST /tasks` being executed from the page itself, with the server's live `201` and the created task coming
+back:
+
+![POST /tasks executed from Swagger UI, returning 201 Created and the new task](docs/swagger-try-it-out.png)
+
+The whole CRUD cycle — create, list, update, delete — works this way without touching curl.
 
 ## The mortality experiment
 
