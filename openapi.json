@@ -38,7 +38,8 @@
                   "version": "1.0",
                   "endpoints": [
                     "/tasks"
-                  ]
+                  ],
+                  "docs": "/docs"
                 }
               }
             }
@@ -66,13 +67,71 @@
         }
       }
     },
+    "/stats": {
+      "get": {
+        "tags": [
+          "Meta"
+        ],
+        "summary": "Count tasks by state",
+        "responses": {
+          "200": {
+            "description": "Totals computed from the current list",
+            "content": {
+              "application/json": {
+                "example": {
+                  "total": 3,
+                  "done": 1,
+                  "open": 2
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tasks": {
       "get": {
         "tags": [
           "Tasks"
         ],
         "summary": "List tasks",
-        "description": "Returns every task.",
+        "description": "Returns every task. Use `done` and `search` to filter, and `limit`/`offset` to page through the results.",
+        "parameters": [
+          {
+            "name": "done",
+            "in": "query",
+            "description": "Only return finished (`true`) or unfinished (`false`) tasks.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Only return tasks whose title contains this text (case-insensitive).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of tasks to return.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of tasks to skip before returning results.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The matching tasks",
@@ -83,6 +142,16 @@
                   "items": {
                     "$ref": "#/components/schemas/Task"
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query parameter was invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -262,6 +331,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reset": {
+      "post": {
+        "tags": [
+          "Meta"
+        ],
+        "summary": "Restore the three seed tasks",
+        "description": "Throws away the current list and starts over. Handy for demos.",
+        "responses": {
+          "200": {
+            "description": "The restored list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Task"
+                  }
                 }
               }
             }

@@ -18,12 +18,16 @@ app.use((err, req, res, next) => {
   next(err);
 });
 
-// The "database": an in-memory list. Everything here is lost on restart.
-let tasks = [
+// Built fresh on every call so that PUT-ing a seed task and then POST /reset
+// hands back the original wording rather than the mutated copy.
+const seedTasks = () => [
   { id: 1, title: 'Read the assignment', done: true },
   { id: 2, title: 'Build the Task API', done: false },
   { id: 3, title: 'Push it to GitHub', done: false },
 ];
+
+// The "database": an in-memory list. Everything here is lost on restart.
+let tasks = seedTasks();
 
 // Next free id: one past the highest in use, so deleting the last task
 // doesn't hand its id to the next one created.
@@ -49,6 +53,48 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/tasks', (req, res) => {
+  const { done, search, limit, offset } = req.query;
+  let result = tasks;
+
+  if (done !== undefined) {
+    if (done !== 'true' && done !== 'false') {
+      return res.status(400).json({ error: 'Query parameter "done" must be true or false' });
+    }
+    result = result.filter((t) => t.done === (done === 'true'));
+  }
+
+  if (search !== undefined) {
+    const needle = String(search).toLowerCase();
+    result = result.filter((t) => t.title.toLowerCase().includes(needle));
+  }
+
+  // Pagination is applied last, so limit/offset page through the filtered set.
+  if (offset !== undefined) {
+    const skip = Number(offset);
+    if (!Number.isInteger(skip) || skip < 0) {
+      return res.status(400).json({ error: 'Query parameter "offset" must be an integer >= 0' });
+    }
+    result = result.slice(skip);
+  }
+
+  if (limit !== undefined) {
+    const take = Number(limit);
+    if (!Number.isInteger(take) || take < 1) {
+      return res.status(400).json({ error: 'Query parameter "limit" must be an integer >= 1' });
+    }
+    result = result.slice(0, take);
+  }
+
+  res.json(result);
+});
+
+app.get('/stats', (req, res) => {
+  const done = tasks.filter((t) => t.done).length;
+  res.json({ total: tasks.length, done, open: tasks.length - done });
+});
+
+app.post('/reset', (req, res) => {
+  tasks = seedTasks();
   res.json(tasks);
 });
 
