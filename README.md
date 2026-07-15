@@ -25,6 +25,24 @@ where every endpoint below can be run with the **Try it out** button — no curl
 To run with auto-reload while editing: `npm run dev`.
 To use a different port: `PORT=4000 npm start`.
 
+### The React client (optional extra)
+
+The assignment only asks for the API and Swagger UI. This repo also includes a small React app that uses
+the same endpoints, so the CRUD cycle can be driven from a real UI instead of a docs page.
+
+With the API already running in one terminal, in a second terminal:
+
+```bash
+npm install --prefix frontend
+npm run dev --prefix frontend
+```
+
+Then open **<http://localhost:5173>**. It lists tasks, adds them, renames them inline, ticks them off,
+deletes them, filters by state, searches, and shows the live counts from `/stats`.
+
+The API sends no CORS headers and does not need to: the Vite dev server proxies `/tasks`, `/stats`,
+`/reset` and `/health` to port 3000, so the browser only ever talks to one origin.
+
 ## Endpoints
 
 | Method | Path | What it does | Success | Errors |
@@ -121,9 +139,13 @@ what next week is for.
 ## Project layout
 
 ```
-server.js      the whole API — routes, validation, in-memory list
-openapi.json   the OpenAPI 3.0 spec that Swagger UI renders at /docs
-frontend/      a small React app that talks to the API (optional extra)
+server.js        the whole API — routes, validation, in-memory list
+openapi.json     the OpenAPI 3.0 spec that Swagger UI renders at /docs
+frontend/
+  vite.config.js dev-server proxy to the API on port 3000
+  src/api.js     fetch wrapper — unwraps the { error } bodies
+  src/App.jsx    the task list, filters and stats
+  src/TaskRow.jsx one row: toggle, inline rename, delete
 ```
 
 ## Notes on design
@@ -137,3 +159,5 @@ A few decisions worth calling out:
 - **Unparseable JSON returns a JSON error.** Express's default handler answers with an HTML error page, which
   would break the "every error is JSON" rule, so there is an explicit handler for it.
 - **Whitespace-only titles are rejected.** `{"title":"   "}` is a `400`, not a task named `"   "`.
+- **The React client does not re-validate.** Submitting an empty title sends the request anyway and shows the
+  server's `400` message, because the server is the thing that owns that rule.
