@@ -1,4 +1,8 @@
+import { readFileSync } from 'node:fs';
 import express from 'express';
+import swaggerUi from 'swagger-ui-express';
+
+const openapiSpec = JSON.parse(readFileSync(new URL('./openapi.json', import.meta.url)));
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -25,11 +29,18 @@ let tasks = [
 // doesn't hand its id to the next one created.
 const nextId = () => (tasks.length ? Math.max(...tasks.map((t) => t.id)) + 1 : 1);
 
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec, { customSiteTitle: 'Task API — docs' }));
+
+app.get('/openapi.json', (req, res) => {
+  res.json(openapiSpec);
+});
+
 app.get('/', (req, res) => {
   res.json({
     name: 'Task API',
     version: '1.0',
     endpoints: ['/tasks'],
+    docs: '/docs',
   });
 });
 
