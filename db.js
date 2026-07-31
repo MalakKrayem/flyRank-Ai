@@ -27,16 +27,18 @@ const SEED_TASKS = [
   { title: 'Push it to GitHub', done: 0 },
 ];
 
-// Counting first is what stops the examples multiplying on every restart.
-// Wrapped in a transaction so the three inserts are all-or-nothing: a crash halfway
-// through can't leave the table holding one and a half seeds, which would then look
-// "not empty" and never be completed.
-const seedIfEmpty = db.transaction(() => {
-  const { count } = db.prepare('SELECT COUNT(*) AS count FROM tasks').get();
-  if (count > 0) return;
-
+// A transaction so the three inserts are all-or-nothing: a crash halfway through
+// can't leave the table holding one and a half seeds, which would then look
+// "not empty" to the check below and never be completed.
+const insertSeeds = db.transaction(() => {
   const insert = db.prepare('INSERT INTO tasks (title, done) VALUES (?, ?)');
   for (const task of SEED_TASKS) insert.run(task.title, task.done);
+});
+
+// Counting first is what stops the examples multiplying on every restart.
+const seedIfEmpty = db.transaction(() => {
+  const { count } = db.prepare('SELECT COUNT(*) AS count FROM tasks').get();
+  if (count === 0) insertSeeds();
 });
 
 seedIfEmpty();
@@ -61,5 +63,31 @@ export const createTask = (title) => {
     .run(title, 0);
   return getTask(lastInsertRowid);
 };
+
+// PUT accepts partial bodies, but the statement always writes both columns:
+// whatever the caller left out is filled in from the row as it stands.
+export const updateTask = (id, { title, done }) => {
+  const current = getTask(id);
+  if (current === undefined) return undefined;
+
+  db.prepare('UPDATE tasks SET title = ?, done = ? WHERE id = ?')
+    .run(title ?? current.title, Number(done ?? current.done), id);
+
+  return getTask(id);
+};
+
+// `changes` is how many rows the statement actually touched — 0 means there was
+// no such id, which is the 404 the route needs.
+export const deleteTask = (id) => db.prepare('DELETE FROM tasks WHERE id = ?').run(id).changes > 0;
+
+// Empties the table and puts the three examples back. Clearing the sqlite_sequence
+// row matters: AUTOINCREMENT remembers the highest id ever issued, so without it a
+// reset would hand the seeds ids 6, 7, 8 instead of 1, 2, 3.
+export const resetTasks = db.transaction(() => {
+  db.prepare('DELETE FROM tasks').run();
+  db.prepare('DELETE FROM sqlite_sequence WHERE name = ?').run('tasks');
+  insertSeeds();
+  return listTasks();
+});
 
 export default db;

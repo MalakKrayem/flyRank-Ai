@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import express from 'express';
 import swaggerUi from 'swagger-ui-express';
-import { listTasks, getTask, createTask } from './db.js';
+import { listTasks, getTask, createTask, updateTask, deleteTask, resetTasks } from './db.js';
 
 const openapiSpec = JSON.parse(readFileSync(new URL('./openapi.json', import.meta.url)));
 
@@ -18,16 +18,6 @@ app.use((err, req, res, next) => {
   }
   next(err);
 });
-
-// Migration in progress: reads come from SQLite (see db.js), while the write
-// endpoints below still push onto this list. They move to SQL in Stages 2 and 3.
-const seedTasks = () => [
-  { id: 1, title: 'Read the assignment', done: true },
-  { id: 2, title: 'Build the Task API', done: false },
-  { id: 3, title: 'Push it to GitHub', done: false },
-];
-
-let tasks = seedTasks();
 
 // `/tasks/abc` used to become NaN and simply miss every list entry. A NaN handed
 // to a SQL parameter is a different kind of nothing, so bad ids are caught here
@@ -99,8 +89,7 @@ app.get('/stats', (req, res) => {
 });
 
 app.post('/reset', (req, res) => {
-  tasks = seedTasks();
-  res.json(tasks);
+  res.json(resetTasks());
 });
 
 app.get('/tasks/:id', (req, res) => {
@@ -121,9 +110,10 @@ app.post('/tasks', (req, res) => {
 });
 
 app.put('/tasks/:id', (req, res) => {
-  const id = Number(req.params.id);
-  const task = tasks.find((t) => t.id === id);
-  if (!task) {
+  const id = parseId(req.params.id);
+  // Checked before the body is validated, so a bad id on a bad body is still a
+  // 404 rather than a 400 — the same order of answers A1 gave.
+  if (id === undefined || getTask(id) === undefined) {
     return res.status(404).json({ error: `Task ${req.params.id} not found` });
   }
 
@@ -138,18 +128,14 @@ app.put('/tasks/:id', (req, res) => {
     return res.status(400).json({ error: 'Field "done" must be true or false' });
   }
 
-  if (title !== undefined) task.title = title.trim();
-  if (done !== undefined) task.done = done;
-  res.json(task);
+  res.json(updateTask(id, { title: title?.trim(), done }));
 });
 
 app.delete('/tasks/:id', (req, res) => {
-  const id = Number(req.params.id);
-  const index = tasks.findIndex((t) => t.id === id);
-  if (index === -1) {
+  const id = parseId(req.params.id);
+  if (id === undefined || !deleteTask(id)) {
     return res.status(404).json({ error: `Task ${req.params.id} not found` });
   }
-  tasks.splice(index, 1);
   res.status(204).end();
 });
 
