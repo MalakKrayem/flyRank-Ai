@@ -1,7 +1,15 @@
 import { readFileSync } from 'node:fs';
 import express from 'express';
 import swaggerUi from 'swagger-ui-express';
-import { listTasks, getTask, createTask, updateTask, deleteTask, resetTasks } from './db.js';
+import {
+  listTasks,
+  getTask,
+  taskStats,
+  createTask,
+  updateTask,
+  deleteTask,
+  resetTasks,
+} from './db.js';
 
 const openapiSpec = JSON.parse(readFileSync(new URL('./openapi.json', import.meta.url)));
 
@@ -46,29 +54,36 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// The route's job is to validate what arrived and translate it into options;
+// the WHERE, ORDER BY, LIMIT and OFFSET that answer them live in db.js.
 app.get('/tasks', (req, res) => {
-  const { done, search, limit, offset } = req.query;
-  let result = listTasks();
+  const { done, search, sort, limit, offset } = req.query;
+  const options = {};
 
   if (done !== undefined) {
     if (done !== 'true' && done !== 'false') {
       return res.status(400).json({ error: 'Query parameter "done" must be true or false' });
     }
-    result = result.filter((t) => t.done === (done === 'true'));
+    options.done = done === 'true';
   }
 
   if (search !== undefined) {
-    const needle = String(search).toLowerCase();
-    result = result.filter((t) => t.title.toLowerCase().includes(needle));
+    options.search = String(search);
   }
 
-  // Pagination is applied last, so limit/offset page through the filtered set.
+  if (sort !== undefined) {
+    if (sort !== 'id' && sort !== 'title') {
+      return res.status(400).json({ error: 'Query parameter "sort" must be id or title' });
+    }
+    options.sort = sort;
+  }
+
   if (offset !== undefined) {
     const skip = Number(offset);
     if (!Number.isInteger(skip) || skip < 0) {
       return res.status(400).json({ error: 'Query parameter "offset" must be an integer >= 0' });
     }
-    result = result.slice(skip);
+    options.offset = skip;
   }
 
   if (limit !== undefined) {
@@ -76,16 +91,14 @@ app.get('/tasks', (req, res) => {
     if (!Number.isInteger(take) || take < 1) {
       return res.status(400).json({ error: 'Query parameter "limit" must be an integer >= 1' });
     }
-    result = result.slice(0, take);
+    options.limit = take;
   }
 
-  res.json(result);
+  res.json(listTasks(options));
 });
 
 app.get('/stats', (req, res) => {
-  const all = listTasks();
-  const done = all.filter((t) => t.done).length;
-  res.json({ total: all.length, done, open: all.length - done });
+  res.json(taskStats());
 });
 
 app.post('/reset', (req, res) => {

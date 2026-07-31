@@ -95,7 +95,7 @@
           "Tasks"
         ],
         "summary": "List tasks",
-        "description": "Returns every task. Use `done` and `search` to filter, and `limit`/`offset` to page through the results.",
+        "description": "Returns every task. Use `done` and `search` to filter, `sort` to order them, and `limit`/`offset` to page through the results. All of it is done in SQL.",
         "parameters": [
           {
             "name": "done",
@@ -111,6 +111,19 @@
             "description": "Only return tasks whose title contains this text (case-insensitive).",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Order the results by insertion order (`id`, the default) or alphabetically by title (`title`, case-insensitive).",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "id",
+                "title"
+              ],
+              "default": "id"
             }
           },
           {
@@ -370,7 +383,9 @@
         "required": [
           "id",
           "title",
-          "done"
+          "done",
+          "created_at",
+          "updated_at"
         ],
         "properties": {
           "id": {
@@ -384,6 +399,18 @@
           "done": {
             "type": "boolean",
             "example": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the task was created, set by the database.",
+            "example": "2026-07-31T18:23:49Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the task was last changed, set by the database on every update.",
+            "example": "2026-07-31T18:23:50Z"
           }
         }
       },
