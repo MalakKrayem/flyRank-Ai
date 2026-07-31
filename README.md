@@ -3,50 +3,129 @@
 A small CRUD API that manages a to-do list — create, read, update and delete tasks — with interactive
 Swagger UI documentation at `/docs`.
 
-Built for **FlyRank Internship · Backend Track** — the API and Swagger UI in Week 2 (A1), and its
-storage moved onto a real database in Week 3 (A2). JavaScript lane: Node.js + Express + SQLite.
+Built for **FlyRank Internship · Backend Track** — the API and Swagger UI in A1, its storage moved
+onto a real database in A2, and in A3 that database became **PostgreSQL running in a container**,
+with the app beside it. JavaScript lane: Node.js + Express + Postgres + Docker Compose.
 
-Tasks live in a SQLite file called `tasks.db`. **They survive a restart** — which is the entire
-point of Week 3, and the one thing the Week 2 version could not do.
+The whole stack — API and database — starts with **one command**:
+
+```bash
+cp .env.example .env && docker compose up
+```
 
 ![Swagger UI listing every endpoint of the Task API](docs/swagger-ui.png)
 
+## The point of this one
+
+Storage has climbed a ladder, and the API on top never noticed:
+
+| Assignment | Where tasks live | What runs it | Survives |
+| --- | --- | --- | --- |
+| A1 | an array in memory | the Node process | nothing |
+| A2 | a `tasks.db` file | SQLite, inside the process | a restart of the app |
+| **A3 (this)** | rows in Postgres | **a container — a real database server** | a restart of the app *and* of the database |
+
+Same five endpoints, same request and response shapes, same status codes, three completely different
+things underneath. That is not a coincidence — it is what the layers were for, and
+[the tests prove it](#why-the-tests-didnt-change).
+
 ## Requirements
 
-- [Node.js](https://nodejs.org) 18 or newer (`node -v` to check)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) or [Podman](https://podman.io) —
+  `docker --version` to check.
 
-No database to install. SQLite has no server and no setup: it is a single file, and the file is
-created for you the first time the app runs.
+That is the entire list. **You do not install Postgres and you do not install Node.** Both arrive as
+containers, described by [`compose.yaml`](compose.yaml) and [`Dockerfile`](Dockerfile), and both are
+thrown away when you are finished with them.
+
+Node.js 20.12+ is needed only if you want to run the app or the tests directly on your machine
+instead of in a container.
 
 ## Install & run
 
 ```bash
-npm install
-npm start
+cp .env.example .env
+docker compose up
 ```
 
-That is the whole thing. The server starts on **<http://localhost:3000>**, creates `tasks.db` if it
-is missing, creates the `tasks` table if it is missing, and seeds three example tasks if the table is
-empty. A fresh clone goes from `git clone` to a working, populated API in two commands.
+The first run builds the API image and downloads Postgres, so it takes a minute. Every run after that
+is a few seconds. What happens:
+
+1. `db` starts the official `postgres:17-alpine` image and creates an empty `tasks` database.
+2. `api` waits for the database's healthcheck to pass — not just for its container to exist.
+3. The app connects, creates the `tasks` table if it is missing, and seeds three example tasks if the
+   table is empty.
+4. The port opens. **<http://localhost:3000>** is a working, populated API.
 
 Open **<http://localhost:3000/docs>** for Swagger UI, where every endpoint below can be run with the
 **Try it out** button — no curl required.
 
-To run with auto-reload while editing: `npm run dev`.
-To use a different port: `PORT=4000 npm start`.
-To run the tests: `npm test`.
+```bash
+docker compose up -d          # start in the background
+docker compose logs -f api    # follow the app's logs
+docker compose down           # stop everything — the data stays in the volume
+docker compose down -v        # stop everything and delete the data too
+```
+
+### Configuration
+
+Every setting lives in `.env`, which is **git-ignored**. [`.env.example`](.env.example) is committed
+in its place with the same keys and placeholder values, so a clone knows what to set without being
+told a secret.
+
+| Variable | What it is | Default in `.env.example` |
+| --- | --- | --- |
+| `POSTGRES_USER` | Database user, created by the `db` container | `postgres` |
+| `POSTGRES_PASSWORD` | Its password. **Compose refuses to start without one.** | `dev` |
+| `POSTGRES_DB` | Database created on first start | `tasks` |
+| `PORT` | Host port the API is published on | `3000` |
+| `DATABASE_URL` | The whole connection as one string — used when you run the app *outside* compose (`npm start`, `npm test`) | `postgres://postgres:dev@localhost:5432/tasks` |
+
+Under `docker compose up` the api service does not read `DATABASE_URL` from `.env`: compose builds
+one for it pointing at `db`, the database's *service name*, because inside the compose network
+`localhost` means "this container" and nothing is listening on 5432 there.
+
+### Running it without Docker
+
+If you would rather run Node on your machine and keep only the database in a container:
+
+```bash
+docker compose up -d db   # just the database
+npm install
+npm start                 # reads DATABASE_URL from .env — localhost, not db
+```
+
+`npm run dev` does the same with auto-reload. `npm test` needs the database running the same way, and
+creates (and drops) its own throwaway databases beside it.
+
+### The database without compose
+
+Before there was a `compose.yaml` there was one long `docker run`, and it is worth keeping around
+because it is compose's whole job written out by hand:
+
+```bash
+docker run --name taskdb \
+  -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=tasks \
+  -p 5432:5432 -v taskdata:/var/lib/postgresql/data \
+  -d postgres:17-alpine
+```
+
+Run the official image, name the container `taskdb`, set a password and a database called `tasks`,
+publish port 5432 to this machine, mount the named volume `taskdata` where Postgres keeps its data,
+and detach. `docker stop taskdb` when you are done — the port has to be free before
+`docker compose up` can claim it.
+
+Every one of those flags reappears in [`compose.yaml`](compose.yaml) as a line of YAML. That is what
+compose is: the same arguments, written down instead of retyped, for more than one container at once.
 
 ## The React client (optional extra)
 
-The assignment only asks for the API and Swagger UI. This repo also includes a small React app that uses
-the same endpoints, so the CRUD cycle can be driven from a real UI instead of a docs page.
+The assignment only asks for the API and Swagger UI. This repo also includes a small React app that
+uses the same endpoints, so the CRUD cycle can be driven from a real UI instead of a docs page.
 
 ![The React client listing tasks, with total/open/done counts and filters](docs/react-client.png)
 
-Task **#4** above is the one created by the Swagger screenshot further down — same server, same rows
-in `tasks.db`, viewed through a different client.
-
-With the API already running in one terminal, in a second terminal:
+With the API already running, in a second terminal:
 
 ```bash
 npm install --prefix frontend
@@ -59,114 +138,152 @@ deletes them, filters by state, searches, and shows the live counts from `/stats
 The API sends no CORS headers and does not need to: the Vite dev server proxies `/tasks`, `/stats`,
 `/reset` and `/health` to port 3000, so the browser only ever talks to one origin.
 
+## Containers, in the smallest number of words
+
+- An **image** is a frozen recipe: a program plus everything it needs to run.
+- A **container** is a running copy of an image. Throw it away and make another; they are identical.
+- A **volume** is disk that Docker keeps *outside* the container, so it outlives it.
+- **Compose** is one file describing several containers and the network they share.
+
+Which maps onto this repo as:
+
+| Thing | Here |
+| --- | --- |
+| Image | `postgres:17-alpine`, and the one [`Dockerfile`](Dockerfile) builds from this source |
+| Container | `db` and `api`, started together |
+| Volume | `taskdata` — where the rows live, and why they survive `docker compose down` |
+| Compose | [`compose.yaml`](compose.yaml) |
+
+The two containers reach each other by service name on a private network compose creates for them.
+The only doors to the outside are the ones `ports:` opens: 3000 for the API, 5432 for the database
+so psql and a GUI can get in. In a real deployment that second one would be deleted.
+
 ## The database
 
-### Why SQLite
+### Why Postgres
 
-- **It is one file.** `tasks.db` is the whole database. Nothing to install, no server process to
-  start, no port, no username and password, no connection string to keep out of Git.
-- **It survives restarts.** The only property Week 2's in-memory list was missing, and the reason
-  this assignment exists.
-- **It is real SQL.** `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `WHERE`, `ORDER BY`, indexes,
-  transactions — the same language and the same ideas as Postgres, at a size you can read in an
-  afternoon. Nothing learned here is thrown away when a project outgrows it.
-- **A stranger can run it.** No setup step means no setup step to get wrong.
+- **It is a server, not a library.** SQLite ran *inside* the Node process; Postgres is its own
+  program, on its own port, that many applications can talk to at once. That is the difference
+  between one app with a file and a database several services share.
+- **It handles concurrent writers.** The exact thing SQLite is bad at, and the reason projects
+  eventually move.
+- **It has real types.** `BOOLEAN` is a boolean and `TIMESTAMPTZ` is an instant — so the 0/1
+  translation A2 needed in the repository is simply gone.
+- **It is what FlyRank runs.** Stores, content and SEO reports are Postgres rows exactly like these.
 
-What it is *not* good at is many machines writing at once — that is the point where a project moves
-to Postgres or MySQL. For one server and one to-do list, that trade is free.
+The driver is [`pg`](https://node-postgres.com) — the standard, no-magic Node client. Its one visible
+consequence is in [`task.repository.js`](src/repositories/task.repository.js): every function is now
+`async`, because a query crosses a socket to another program instead of reading a local file.
 
-The library is [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3), whose queries are
-synchronous: no `await`, no callbacks, and
-[`task.repository.js`](src/repositories/task.repository.js) reads top to bottom.
+### Where the data lives
 
-### Where the database file lives
+Not in the repo, and not in the container. In a **named Docker volume** called `taskdata`, mounted at
+`/var/lib/postgresql/data` inside the `db` container.
 
-`tasks.db`, in the project root, next to `server.js`. It is **git-ignored on purpose** — it is
-generated, not source. Committing it would ship one particular person's to-do list to everyone who
-clones the repo, and every clone would start from someone else's data instead of the three examples.
-
-Deleting it is safe and is the fastest way to start over:
+That single line in [`compose.yaml`](compose.yaml) is what makes the data outlive everything around
+it. The container is disposable; the volume is not.
 
 ```bash
-rm tasks.db && npm start   # back to the three seeded tasks
+docker volume ls                  # taskdata is in the list
+docker compose down && docker compose up   # containers replaced, rows still there
+docker compose down -v            # -v deletes the volume: back to the three seeds
 ```
-
-`POST /reset` does the same thing without stopping the server.
 
 ### The schema
 
 ```sql
 CREATE TABLE tasks (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  title      TEXT    NOT NULL,
-  done       INTEGER NOT NULL DEFAULT 0 CHECK (done IN (0, 1)),
-  created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-  updated_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+  id         SERIAL      PRIMARY KEY,
+  title      TEXT        NOT NULL,
+  done       BOOLEAN     NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_tasks_done  ON tasks(done);
-CREATE INDEX idx_tasks_title ON tasks(title COLLATE NOCASE, id);
+CREATE INDEX idx_tasks_done  ON tasks (done);
+CREATE INDEX idx_tasks_title ON tasks (lower(title), id);
 ```
 
-SQLite has no boolean type, so `done` is stored as `0`/`1` and translated to `true`/`false` on its
-way out — [`task.repository.js`](src/repositories/task.repository.js) is the only file that knows
-about that.
+Three things are worth pointing at, because each one replaced a workaround from A2:
 
-**What the indexes are for.** An index is a sorted copy of one or more columns that the database
-keeps beside the table, so it can jump straight to matching rows instead of reading every row to find
-them — the difference between using a book's index and reading the book.
+- **`SERIAL`** is a sequence handing out the next number and never looking back, so a deleted id is
+  never reissued. A1 kept that promise with a `Math.max`; A2 needed SQLite's `AUTOINCREMENT` keyword
+  to stop it reusing ids. Here it is just how the column works.
+- **`BOOLEAN`** means `done` is `true`/`false` all the way down. SQLite had no boolean type, so A2
+  stored 0/1 and translated on the way out. That translation is deleted.
+- **`TIMESTAMPTZ`** stores an instant the database understands rather than a string it can only
+  compare alphabetically. The API still promises `"2026-07-31T18:23:49Z"`, so every read formats the
+  two stamps with `to_char(...)` on the way out — which is why the queries name their columns instead
+  of saying `SELECT *`.
 
-Both of these were checked with `EXPLAIN QUERY PLAN`, which is the only way to know an index is
-actually being used rather than merely existing:
+The `?search=` filter changed too, and it is the kind of difference that only shows up when you run
+the tests: SQLite's `LIKE` ignores case for ASCII by itself, Postgres's does not. `?search=GITHUB`
+keeps finding "GitHub" because the query now says **`ILIKE`**.
 
-```console
-$ sqlite3 tasks.db "EXPLAIN QUERY PLAN SELECT * FROM tasks WHERE done = 1;"
-SEARCH tasks USING INDEX idx_tasks_done (done=?)
-```
+**What the indexes are for.** An index is a sorted lookup structure the database keeps beside the
+table, so it can jump to matching rows instead of reading every one — the difference between using a
+book's index and reading the book.
 
-That check was worth running. The title index was first written as `ON tasks(title)` while the sort
-is `ORDER BY title COLLATE NOCASE, id` — and an index sorted one way cannot answer a query that wants
-another, so the planner silently ignored it and said `SCAN`. Matching the index to the collation and
-the tiebreaker the query actually uses is what turned it into `SCAN tasks USING INDEX idx_tasks_title`.
-Neither index helps `?search=`: `LIKE '%milk%'` starts with a wildcard, and an index is only useful
-when you know how a value begins.
+The title one is an **expression index** on `lower(title), id`, matching the sort exactly. An index
+sorted one way cannot answer a query that wants another: in A2 this was declared without the
+collation and the planner silently ignored it. Neither index helps `?search=`: `ILIKE '%milk%'`
+starts with a wildcard, and an index is only useful when you know how a value begins.
 
-**What the transactions are for.** Seeding is three `INSERT`s guarded by a "is the table empty?"
-count, and it runs inside a transaction so those three inserts are one all-or-nothing step. Without
-it, a crash after the first insert would leave a table holding one seed — no longer empty, so the
-count would never trigger again, and the database would be permanently stuck one-third seeded.
-`POST /reset` is wrapped for the same reason: it deletes every row and re-inserts the seeds, and a
-failure in between would otherwise leave you with no tasks at all.
+Both were checked with `EXPLAIN ANALYZE` against 50,000 rows, and the two answers were not the same.
+`?sort=title&limit=10` went from **28.9 ms to 0.5 ms** with `idx_tasks_title`, because the rows are
+already in that order and the query can read ten and stop. `?done=true` went from 2.7 ms to only
+1.4 ms with `idx_tasks_done` — a tenth of the table matches, so having found those rows via the index
+Postgres still has to read 467 of the table's blocks to fetch them. [The numbers and the plans are in
+the psql session](docs/postgres-psql.md#explain-analyze--do-the-indexes-actually-do-anything). An
+index is a guess about which questions will be asked, and it is not free — every write maintains it.
+
+**What the transactions are for.** Seeding is one `INSERT` guarded by an "is the table empty?" count,
+and both run inside a transaction that takes a lock first — so two copies of the app starting at the
+same moment cannot both read "empty" and both seed. `POST /reset` is wrapped for the same reason: it
+truncates the table and re-inserts, and a failure in between would otherwise leave you with nothing.
 
 ### Seeing it with your own eyes
 
-`tasks.db` opens in [DB Browser for SQLite](https://sqlitebrowser.org) — free, and worth having.
-Here is the same data the API serves, laid out as a table:
+`psql` is already inside the database container — nothing to install:
 
-![The tasks table open in DB Browser for SQLite, showing the seeded rows](docs/db-browser.png)
-
-One query from [the Stage 4 session](docs/stage4-sql.md), run by hand in DB Browser's **Execute SQL**
-tab while the server was still running:
-
-```sql
-SELECT * FROM tasks WHERE done = 1;
+```bash
+docker compose exec db psql -U postgres -d tasks
 ```
 
-It returned a single row — task 1, *"Read the assignment"* — because it is the only seeded task with
-`done = 1`. That is the same filter `GET /tasks?done=true` performs, which is not a coincidence: the
-endpoint runs that query.
+<!-- Replace this line with the screenshot: ![The tasks table in psql](docs/postgres-psql.png) -->
+**Screenshot: `docs/postgres-psql.png` — the two commands below, run in a terminal.**
 
-The [full Stage 4 transcript](docs/stage4-sql.md) has the other four queries and what each returned,
-including the moment that makes the whole assignment click — running `UPDATE tasks SET done = 1;` by
-hand and watching `GET /tasks` report every task as done, with no restart and no syncing step. DB
-Browser and the API are not two copies of the data. They are two windows onto one file.
+```console
+tasks=# \dt
+         List of relations
+ Schema | Name  | Type  |  Owner
+--------+-------+-------+----------
+ public | tasks | table | postgres
+(1 row)
+
+tasks=# SELECT * FROM tasks;
+ id |        title        | done |          created_at           |          updated_at
+----+---------------------+------+-------------------------------+-------------------------------
+  1 | Read the assignment | t    | 2026-07-31 20:14:09.437812+00 | 2026-07-31 20:14:09.437812+00
+  2 | Build the Task API  | f    | 2026-07-31 20:14:09.437812+00 | 2026-07-31 20:14:09.437812+00
+  3 | Push it to GitHub   | f    | 2026-07-31 20:14:09.437812+00 | 2026-07-31 20:14:09.437812+00
+(3 rows)
+```
+
+`t` and `f` — a real boolean, not the `0`/`1` A2 had to translate on the way out.
+
+The [full psql session](docs/postgres-psql.md) has the rest: `\d tasks` with `SERIAL`'s mask off,
+`EXPLAIN ANALYZE` showing one index earning a 57× speed-up and the other earning almost nothing, and
+the moment that makes the whole assignment click — running `UPDATE tasks SET done = true;` by hand
+and watching `GET /tasks` report every task as done, with no restart and no syncing step. psql and
+the API are not two copies of the data. They are two clients of one server.
 
 ## Endpoints
 
 | Method | Path | What it does | Success | Errors |
 | --- | --- | --- | --- | --- |
 | `GET` | `/` | Describes the API | `200` | — |
-| `GET` | `/health` | Liveness check — returns `{"status":"ok"}` | `200` | — |
+| `GET` | `/health` | Liveness check — **runs `SELECT 1` against Postgres** | `200` | `503` database unreachable |
 | `GET` | `/tasks` | Lists all tasks. Supports `?done=`, `?search=`, `?sort=`, `?limit=`, `?offset=` | `200` | `400` invalid query |
 | `GET` | `/tasks/:id` | Returns one task | `200` | `404` unknown id |
 | `POST` | `/tasks` | Creates a task from `{"title":"..."}` | `201` | `400` missing/empty title |
@@ -193,8 +310,24 @@ Express's built-in HTML error page.
 }
 ```
 
-`id`, `title` and `done` are unchanged from Week 2. The two timestamps are new, and the database sets
-both of them — `created_at` once, `updated_at` on every write.
+Byte for byte what A1 and A2 returned.
+
+### A health check that checks something
+
+`GET /health` used to answer `{"status":"ok"}` from the process alone, which only ever proved that
+Node was running. It now runs a real `SELECT 1`:
+
+```json
+{ "status": "ok", "db": "ok" }
+```
+
+and answers **503** with `{"status":"degraded","db":"unreachable"}` when the database is gone.
+
+That is the endpoint a **load balancer** polls, and the reason the status code matters more than the
+body. A load balancer sits in front of several copies of an app and sends each request to one of
+them; it polls this endpoint on every copy and takes any instance that stops answering 200 out of
+rotation, without paging anyone. An API that cannot reach its database is not "up" — it is a 500
+waiting for its first visitor, and this is how it says so.
 
 ## Example requests
 
@@ -208,25 +341,28 @@ HTTP/1.1 201 Created
 X-Powered-By: Express
 Content-Type: application/json; charset=utf-8
 Content-Length: 112
-ETag: ...
-Date: ...
+ETag: W/"70-v5lnWM3IOJBZOMl4uX98/uFAyAs"
+Date: Fri, 31 Jul 2026 20:13:19 GMT
 Connection: keep-alive
 Keep-Alive: timeout=5
 
-{"id":4,"title":"Buy milk","done":false,"created_at":"2026-07-31T18:50:11Z","updated_at":"2026-07-31T18:50:11Z"}
+{"id":4,"title":"Buy milk","done":false,"created_at":"2026-07-31T20:13:19Z","updated_at":"2026-07-31T20:13:19Z"}
 
 $ curl -i http://localhost:3000/tasks/99
 HTTP/1.1 404 Not Found
 X-Powered-By: Express
 Content-Type: application/json; charset=utf-8
 Content-Length: 29
-ETag: ...
-Date: ...
+ETag: W/"1d-kQQdPQ+i/Wk9IgXh55Kh5auGltk"
+Date: Fri, 31 Jul 2026 20:13:19 GMT
 Connection: keep-alive
 Keep-Alive: timeout=5
 
 {"error":"Task 99 not found"}
 ```
+
+Nothing in that output is new. It is the same 201 and the same 404 A1 produced from an array in
+memory — which is the whole idea.
 
 The full CRUD cycle:
 
@@ -242,83 +378,97 @@ Filtering, search, sorting and pagination — every one of them a clause in the 
 JavaScript:
 
 ```bash
-curl "http://localhost:3000/tasks?done=true"        # WHERE done = ?
-curl "http://localhost:3000/tasks?search=milk"      # WHERE title LIKE ? (case-insensitive)
-curl "http://localhost:3000/tasks?sort=title"       # ORDER BY title COLLATE NOCASE
-curl "http://localhost:3000/tasks?limit=2&offset=2" # LIMIT ? OFFSET ?
-curl "http://localhost:3000/stats"                  # SELECT COUNT(*), SUM(done)
+curl "http://localhost:3000/tasks?done=true"        # WHERE done = $1
+curl "http://localhost:3000/tasks?search=milk"      # WHERE title ILIKE $1 ESCAPE '\'
+curl "http://localhost:3000/tasks?sort=title"       # ORDER BY lower(title), id
+curl "http://localhost:3000/tasks?limit=2&offset=2" # LIMIT $1 OFFSET $2
+curl "http://localhost:3000/stats"                  # COUNT(*) FILTER (WHERE done)
 ```
 
-Real APIs never return "everything" from a list endpoint: the list only grows, so an unbounded `GET /tasks`
-sends a response whose size and cost nobody controls — slow for the client, expensive for the server, and
-liable to fall over exactly when the app becomes popular. `limit`/`offset` make the cost of a request
-predictable regardless of how much data exists.
-
-Moving these into SQL changed the cost as well as the code. The old version fetched every row and then
-threw most of them away in JavaScript; `LIMIT 2` asks the database for two rows and gets two rows. At
-three tasks that difference is invisible. At three million it is the difference between an API and an
-outage.
+Real APIs never return "everything" from a list endpoint: the list only grows, so an unbounded
+`GET /tasks` sends a response whose size and cost nobody controls. `limit`/`offset` make the cost of a
+request predictable regardless of how much data exists — and doing it in SQL means the database sends
+two rows rather than the app fetching every row and discarding most of them.
 
 ## Swagger UI
 
-`/docs` is not just a list — every endpoint has a **Try it out** button that sends a real request. Here is
-`POST /tasks` being executed from the page itself, with the server's live `201` and the created task coming
-back:
+`/docs` is not just a list — every endpoint has a **Try it out** button that sends a real request.
+Here is `POST /tasks` being executed from the page itself, with the server's live `201` and the
+created task coming back:
 
 ![POST /tasks executed from Swagger UI, returning 201 Created and the new task](docs/swagger-try-it-out.png)
 
 The whole CRUD cycle — create, list, update, delete — works this way without touching curl.
 
-## The mortality experiment, repeated
+## The mortality experiment, third edition
 
-Week 2's README ended with an experiment: create a few tasks, stop the server, start it again, and
-watch them be gone. The list only ever existed in the process's memory, so quitting the process threw
-it away.
-
-Run the same experiment now:
+A1's README ended with an experiment: create a few tasks, stop the server, start it again, watch them
+be gone. A2 repeated it and they survived, because they were in a file. A3 raises the stakes — this
+time the *database itself* is destroyed and recreated:
 
 ```bash
-curl -X POST http://localhost:3000/tasks -H "Content-Type: application/json" -d '{"title":"Survive the restart"}'
-# stop the server with Ctrl-C, then start it again
-npm start
-curl http://localhost:3000/tasks   # "Survive the restart" is still there
+curl -X POST http://localhost:3000/tasks -H "Content-Type: application/json" -d '{"title":"Survive the container"}'
+docker compose down     # both containers are deleted, not stopped
+docker compose up       # brand-new containers, built from the same images
+curl http://localhost:3000/tasks   # "Survive the container" is still there
 ```
 
-Nothing about the API changed. The task is still there because it was never in the API — it was
-written to `tasks.db`, and a file does not care that the program that wrote it has stopped running.
+Nothing about the API changed. The task survived because the rows were never *in* the container —
+they were in the `taskdata` volume, which Docker keeps outside it.
 
-`npm test` runs that experiment automatically: `test/persistence.test.js` kills the server and starts
-a new one between assertions.
+**And the version that fails.** Delete the volume too and the same sequence loses everything:
+
+```bash
+docker compose down -v && docker compose up
+curl http://localhost:3000/tasks   # three seeded tasks, and nothing else
+```
+
+That is what a volume is for, in one command each way. A container's own filesystem is scratch space
+that dies with it; a volume is the part you meant to keep. Forgetting the `volumes:` line is the most
+common way to build a stack that works perfectly all afternoon and is empty tomorrow morning.
 
 ## Why the tests didn't change
 
-`test/api.test.js` describes the API as Week 2 left it — the endpoints, the request and response
-shapes, the status codes. It does not contain the words SQLite, table, row or query. It talks to the
-server over HTTP, exactly like any other client.
+`test/api.test.js` describes the API as A1 left it — the endpoints, the request and response shapes,
+the status codes. It does not contain the words SQLite, Postgres, container, table, row or query. It
+talks to the server over HTTP, exactly like any other client.
 
-That file passes against **both** versions. Checking A1's `server.js` out of Git into a scratch
-directory and running this exact test file against the in-memory implementation gives 12 passing
-tests; running it against the SQLite implementation gives the same 12.
+**Not one assertion in it changed for this assignment.** The only edit was five lines of fixture in
+`before`/`after`: A2's "make a throwaway directory" became "create a throwaway database", because
+that is what a storage engine with no directories needs. Every `it(...)` block is untouched, and they
+all pass.
 
-That is the proof the assignment is really about. A test that passes against two completely different
-storage layers is a test that was never testing the storage layer — it was testing the promise the API
-makes to its clients. Storage is an implementation detail precisely because you can swap it and the
-tests cannot tell.
+That is the proof the assignment is really about. A test that passes against three completely
+different storage layers — an array, a file, a server in a container — is a test that was never
+testing the storage layer. It was testing the promise the API makes to its clients. **Storage is an
+implementation detail precisely because you can swap it and the tests cannot tell.**
 
-The reverse holds too, and is just as informative. `test/persistence.test.js` — the suite that
-restarts the server mid-test — fails 5 of its 7 tests against the in-memory version. (The other two
-pass by accident: the in-memory list also has three tasks after a restart, though because it was
-rebuilt rather than remembered, and JavaScript's `includes` never treated `%` as a wildcard in the
-first place.) Those five failures are the exact value the database added, written down as
-assertions.
+The reverse holds too. `test/persistence.test.js` — the suite that restarts the server mid-test —
+fails 5 of its 7 tests against the in-memory version. Those five failures are the exact value the
+database added, written down as assertions, and they now hold across a swapped-out database *server*
+as well as a restarted process.
+
+This is also the argument for **A15 — Layered architecture**, one assignment early. The migration was
+small because `services/` and above deal in task objects and never mention a table: moving from
+SQLite to Postgres meant rewriting `repositories/` and `db/`, adding `await` where the layers above
+call them, and leaving the rules, the routes and the error handling exactly as they were.
+
+```bash
+npm test    # 19 tests, the same 19 that passed against SQLite
+```
 
 ## Project layout
 
 ```
-server.js                    entry point: start listening, nothing else
+compose.yaml                 the whole stack: api + db + volume + healthcheck
+Dockerfile                   how the api image is built (multi-stage)
+.dockerignore                what never goes into the image — including .env
+.env.example                 the keys, with placeholder values. Committed.
+.env                         the real values. Git-ignored, never committed.
+server.js                    entry point: ready the database, then start listening
 src/
   app.js                     assembles the Express app from the layers
-  config.js                  PORT, DB_FILE, OPENAPI_FILE — all env reading
+  config.js                  PORT, DATABASE_URL, OPENAPI_FILE — all env reading
   errors.js                  HttpError + badRequest/notFound
   openapi.js                 reads the spec once at startup
   routes/                    URL -> controller. The map of the API.
@@ -332,19 +482,20 @@ src/
   repositories/              the only file containing SQL
     task.repository.js
   db/
-    connection.js            opens tasks.db
-    schema.js                table, indexes, migration, seed rows
-    index.js                 runs the schema, then exports the connection
+    connection.js            the pg pool, the transaction helper, the startup retry
+    schema.js                table, indexes, seed rows
+    index.js                 initDatabase(): wait, apply schema, seed if empty
   middleware/
     not-found.js             unmatched URL -> a JSON 404
     error-handler.js         thrown error -> a JSON response
 openapi.json                 the OpenAPI 3.0 spec Swagger UI renders at /docs
-tasks.db                     the database (generated on first run, git-ignored)
 test/
-  api.test.js                the A1 contract — passes against both implementations
+  helpers.js                 spawns a server against a throwaway database
+  api.test.js                the A1 contract — passes against all three engines
   persistence.test.js        what the database bought: survives restarts, seeds once
 docs/
-  stage4-sql.md              the by-hand SQL session and what each query returned
+  postgres-psql.md           the by-hand psql session and what each query returned
+  stage4-sql.md              the same session from A2, against SQLite
 frontend/
   vite.config.js             dev-server proxy to the API on port 3000
   src/api.js                 fetch wrapper — unwraps the { error } bodies
@@ -357,9 +508,9 @@ frontend/
 A request falls straight down and the answer comes straight back up:
 
 ```
-HTTP  ->  routes  ->  controller  ->  service  ->  repository  ->  SQLite
-          which     translates      the rules     the queries
-          handler   req/res
+HTTP  ->  routes  ->  controller  ->  service  ->  repository  ->  Postgres
+          which     translates      the rules     the queries     (another
+          handler   req/res                                        container)
 ```
 
 The rule that keeps it honest is that **each layer may only know about the one below it**:
@@ -367,60 +518,83 @@ The rule that keeps it honest is that **each layer may only know about the one b
 | Layer | Knows about | Must not know about |
 | --- | --- | --- |
 | `routes/` | which controller handles which URL | anything else |
-| `controllers/` | `req`, `res`, status codes, query strings | SQL, tables, `0`/`1` |
+| `controllers/` | `req`, `res`, status codes, query strings | SQL, tables, connection strings |
 | `services/` | what makes a task valid, what "missing" means | HTTP, status codes, SQL |
-| `repositories/` | tables, columns, `?` placeholders | HTTP, validation |
+| `repositories/` | tables, columns, `$1` placeholders | HTTP, validation |
 
-The payoff is visible in `task.controller.js`: there is not one `try`/`catch` in it. The service
-throws `notFound(...)` or `badRequest(...)` — errors that carry a meaning, not a status code — and a
-single [error handler](src/middleware/error-handler.js) at the end of the stack is the only place in
-the project that decides a 400 looks different from a 404. Add an endpoint and you write a route, a
-thin controller and a service function; you do not re-implement error handling.
-
-The same rule is why the Week 3 migration was small. `services/` and above deal in task objects and
-never mention a table, so moving from an array to SQLite meant rewriting `repositories/` and `db/`
-and leaving every layer above them alone.
-
-Splitting into layers was a **refactor, not a rewrite**: it happened after the migration was
-finished, and `npm test` reports the same 19 passing tests before and after. That is the second time
-in this project the test suite has been used to prove that something big changed underneath while the
-API stayed still.
+The payoff is visible in `task.controller.js`: there is not one `try`/`catch` in it, even now that
+every handler is `async`. Express 5 forwards a rejected promise to the error handler exactly as it
+forwards a thrown one, so a database that says no arrives at the same place a bad title does — and a
+single [error handler](src/middleware/error-handler.js) is still the only file that decides a 400
+looks different from a 404.
 
 ## Notes on design
 
 A few decisions worth calling out:
 
-- **`PUT` accepts partial bodies.** Sending `{"done":true}` leaves `title` alone. Strict REST would call this
-  `PATCH`, but the assignment specifies `PUT` for "title and/or done", so that is what it does. The statement
-  still writes both columns — whatever the body left out is filled in from the row as it stands.
-- **Ids are never reused.** The column is `INTEGER PRIMARY KEY AUTOINCREMENT`. Without `AUTOINCREMENT`,
-  SQLite reuses the id of the highest deleted row, so deleting the newest task would hand its id to the next
-  one created — the same promise Week 2 made, kept by the database instead of by a `Math.max` in the app.
-- **Every value goes in as a `?` parameter.** No user input is ever concatenated into SQL. Where a query
-  varies in *shape* rather than in values — `?sort=title` — the column name is looked up in a fixed table of
-  allowed columns and an unknown one is a `400`, because a placeholder cannot stand in for a column name.
-- **`%` and `_` in a search are text, not wildcards.** They are escaped before reaching `LIKE`, so
+- **The password is never in the repo.** `DATABASE_URL` comes from the environment, `.env` is
+  git-ignored, `.env.example` is committed with placeholders, and `.dockerignore` keeps `.env` out of
+  the image as well. A password that reaches Git is public even after you delete it — the commit that
+  added it is still in the history.
+- **The app waits for the database, twice.** `depends_on: condition: service_healthy` waits for
+  Postgres's own healthcheck before starting the api, and the app retries the connection itself on
+  top of that. The first covers a cold start; the second covers a database that goes away and comes
+  back while the app is running, without needing a human to restart anything.
+- **The port opens last.** `server.js` awaits `initDatabase()` before `app.listen()`, so there is no
+  window in which the API is reachable but the table it queries does not exist yet.
+- **`PUT` accepts partial bodies.** Sending `{"done":true}` leaves `title` alone. Strict REST would
+  call this `PATCH`, but the assignment specifies `PUT` for "title and/or done".
+- **Every value goes in as a `$n` parameter.** No user input is ever concatenated into SQL. Where a
+  query varies in *shape* rather than in values — `?sort=title` — the column name is looked up in a
+  fixed table of allowed columns and an unknown one is a `400`, because a placeholder cannot stand in
+  for a column name.
+- **`%` and `_` in a search are text, not wildcards.** They are escaped before reaching `ILIKE`, so
   `?search=50%` finds titles containing "50%" instead of matching everything.
-- **`/tasks/abc` is a 404, not a 500.** In the in-memory version a `NaN` id simply matched nothing. Handed to
-  a SQL parameter it is a different kind of nothing, so ids are validated before they reach a query.
-- **Unparseable JSON returns a JSON error.** Express's default handler answers with an HTML error page, which
-  would break the "every error is JSON" rule, so there is an explicit handler for it.
-- **Whitespace-only titles are rejected.** `{"title":"   "}` is a `400`, not a task named `"   "`.
-- **The React client does not re-validate.** Submitting an empty title sends the request anyway and shows the
-  server's `400` message, because the server is the thing that owns that rule.
+- **`/tasks/abc` is a 404, not a 500** — and so is `/tasks/99999999999`. `id` is a 32-bit `SERIAL`,
+  and Postgres answers an out-of-range id with an error rather than an empty result, so both kinds of
+  impossible id are turned away by the controller before they reach a query.
+- **The image runs as a non-root user and starts `node` directly.** No `npm` in `CMD`: it would sit
+  between Docker and Node as an extra process, and the SIGTERM that stops the container would go to
+  npm instead of to the server.
 
-### Adding the timestamps was a migration, and it felt like one
+### The image, and why it is built in two stages
 
-`created_at` and `updated_at` were an afterthought, and adding them was the only part of this
-assignment that was genuinely awkward. `CREATE TABLE IF NOT EXISTS` does nothing at all to a table
-that already exists, so putting the new columns in the schema gave them to fresh databases and left
-every existing `tasks.db` on the old shape — including mine. Making it work everywhere meant asking
-SQLite what columns the table actually has (`PRAGMA table_info`) and running `ALTER TABLE ADD COLUMN`
-for whichever were missing, and then discovering that SQLite refuses a non-constant default on
-`ALTER TABLE`, so the columns arrive empty and need a second statement to backfill them.
+[`Dockerfile`](Dockerfile) installs dependencies in one stage and copies only `node_modules` into the
+final image. Nothing that was needed to *build* the image ends up inside it.
 
-The feeling is the point. Changing code is free — you replace the old text with the new text.
-Changing a table's shape is not, because the old shape is still out there holding real data you are
-not allowed to lose, and the change has to be written as instructions for getting from one to the
-other. That set of instructions is a migration, and this one is about fifteen lines at the top of
-[`db/schema.js`](src/db/schema.js) doing by hand what a migration tool would generate.
+Built both ways from this same source, on this machine:
+
+| Dockerfile | Image size |
+| --- | --- |
+| Single stage — `npm install`, then `COPY . .` | **263 MB** |
+| Multi-stage — install in one stage, copy only `node_modules` | **250 MB** |
+
+13 MB, and it is worth being honest about where it comes from and why it is not more. `docker history`
+puts the single-stage `RUN npm install` layer at 25.9 MB while `node_modules` itself is 17.3 MB; the
+difference is npm's own cache, 5.6 MB of `/root/.npm` that got written in the same layer and can never
+be deleted from it afterwards, because a later `RUN rm -rf` only adds a layer that hides files the
+earlier one still contains. In the multi-stage build that cache is left behind in a stage nobody ships.
+
+The remaining 250 MB is almost entirely `node:22-alpine`. This project has no build step and no
+devDependencies, so there is nothing else to leave behind — the technique earns its keep on a
+TypeScript or bundled app, where the compiler, the type definitions and the source are all needed to
+produce a `dist/` that is the only thing worth shipping. The habit is still right at this size: what
+was needed to build the image should not be inside it.
+
+The other half of the saving is `npm ci --omit=dev` and a `.dockerignore` that keeps
+`node_modules`, `.git`, `test/`, `docs/`, `frontend/` and `.env` out of the build context entirely.
+
+### What was awkward this time
+
+In A2 it was the migration. Here it was **asynchrony**, and it spread further than expected.
+better-sqlite3 read a local file and could answer in the same tick, so `findAll()` returned an array
+and the service could just hand it back. `pg` returns a promise, and a promise handed to
+`res.json()` serialises as `{}` — silently, with a 200. The fix is one `await` per call site, but the
+call sites are in three layers, and the failure mode is not an error: it is an empty object where a
+task used to be.
+
+The second surprise was the startup sequence. Under SQLite, `import './db/index.js'` *was* the schema
+step — opening a file is instant, so "import it and the table exists" was true, and the import graph
+enforced the ordering by itself. A server can be slow, absent, or still booting, so that guarantee had
+to become something explicit: an `initDatabase()` the entry point awaits before it opens the port.
+Same promise, now written down instead of implied by module evaluation order.

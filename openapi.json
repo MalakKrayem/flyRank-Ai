@@ -3,7 +3,7 @@
   "info": {
     "title": "Task API",
     "version": "1.0.0",
-    "description": "A small CRUD API for a to-do list. Tasks are stored in a SQLite database (tasks.db), so they survive a restart of the server. The file and its table are created and seeded automatically on first run."
+    "description": "A small CRUD API for a to-do list. Tasks are stored in a PostgreSQL database running in a Docker container, so they survive a restart of the server and a rebuild of its container. The table is created and seeded automatically on first run. The whole stack starts with `docker compose up`."
   },
   "servers": [
     {
@@ -52,14 +52,28 @@
         "tags": [
           "Meta"
         ],
-        "summary": "Check that the server is alive",
+        "summary": "Check that the server is alive and can reach its database",
+        "description": "Runs `SELECT 1` against Postgres rather than only reporting that the process is running. This is the endpoint a load balancer or orchestrator polls: 200 means \"send me traffic\", 503 means \"take me out of rotation\".",
         "responses": {
           "200": {
-            "description": "The server is up",
+            "description": "The server is up and the database answered",
             "content": {
               "application/json": {
                 "example": {
-                  "status": "ok"
+                  "status": "ok",
+                  "db": "ok"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The server is running but cannot reach the database",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "degraded",
+                  "db": "unreachable",
+                  "error": "connect ECONNREFUSED 127.0.0.1:5432"
                 }
               }
             }
