@@ -1,12 +1,15 @@
 {
   "name": "flyrank-ai",
   "version": "1.0.0",
-  "description": "Task API — a small in-memory CRUD API for a to-do list, with Swagger UI.",
+  "description": "Task API — a small CRUD API for a to-do list, backed by Postgres and started with docker compose.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
-    "test": "node --test \"test/*.test.js\""
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --env-file-if-exists=.env --watch server.js",
+    "test": "node --env-file-if-exists=.env --test \"test/*.test.js\""
+  },
+  "engines": {
+    "node": ">=20.12"
   },
   "repository": {
     "type": "git",
@@ -21,8 +24,8 @@
   },
   "homepage": "https://github.com/MalakKrayem/flyRank-Ai#readme",
   "dependencies": {
-    "better-sqlite3": "^13.0.2",
     "express": "^5.2.1",
+    "pg": "^8.22.0",
     "swagger-ui-express": "^5.0.1"
   }
 }

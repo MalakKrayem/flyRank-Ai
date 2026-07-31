@@ -1,22 +1,17 @@
-import db from './connection.js';
-import { applySchema, makeSeeder } from './schema.js';
+import { waitForDatabase } from './connection.js';
+import { applySchema, seedIfEmpty } from './schema.js';
 
-// The database's startup sequence, and the reason it is its own module: importing
-// this file is what guarantees the table exists before anybody queries it. The
-// repository imports `db` from here rather than from connection.js, so the import
-// graph itself enforces the ordering — there is no way to get a connection that
-// has not been through the schema.
-
-applySchema(db);
-
-export const insertSeeds = makeSeeder(db);
-
-// Counting first is what stops the examples multiplying on every restart.
-const seedIfEmpty = db.transaction(() => {
-  const { count } = db.prepare('SELECT COUNT(*) AS count FROM tasks').get();
-  if (count === 0) insertSeeds();
-});
-
-seedIfEmpty();
-
-export default db;
+// The database's startup sequence, in the order it has to happen: reach the
+// server, make sure the table is there, put the examples in if it is empty.
+//
+// Under SQLite this ran the moment the module was imported — opening a file is
+// instant, so "import it and the schema is applied" was true. Talking to a server
+// is not instant and can fail, so the sequence is now a function the entry point
+// awaits before it starts listening. That is the honest version of the same
+// guarantee: no request can arrive before the table exists, because the port is
+// not open until this has finished.
+export const initDatabase = async () => {
+  await waitForDatabase();
+  await applySchema();
+  await seedIfEmpty();
+};
