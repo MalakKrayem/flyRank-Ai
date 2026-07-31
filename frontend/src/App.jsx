@@ -156,7 +156,7 @@ export default function App() {
       )}
 
       <footer className="footer">
-        <span>Data lives in SQLite — it survives a restart. Reset puts the three seed tasks back.</span>
+        <span>Data lives in Postgres, in a container — it survives a restart of the app and of the database. Reset puts the three seed tasks back.</span>
         <button type="button" className="link" onClick={() => run(api.resetTasks)}>
           Reset
         </button>
