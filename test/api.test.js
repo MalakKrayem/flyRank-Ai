@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { client, createStore, destroyStore, startServer, stopServer } from './helpers.js';
 
 // These tests describe the API exactly as Assignment 1 left it: endpoints,
-// request shapes, response shapes, status codes. Not one line of this file
-// mentions SQLite, Postgres, a table, or a query — which is the point. They were
-// written against the in-memory version and they pass, unchanged, against both
-// database-backed ones. See the README section "Why the tests didn't change".
+// request shapes, response shapes, status codes. Below this comment there is not
+// one mention of a storage engine, a table or a query — which is the point. They
+// were written against the in-memory version and they pass, unchanged, against
+// both database-backed ones. See the README, "Why the tests didn't change".
 //
 // Run them with: npm test
 

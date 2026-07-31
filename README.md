@@ -57,6 +57,16 @@ is a few seconds. What happens:
    table is empty.
 4. The port opens. **<http://localhost:3000>** is a working, populated API.
 
+Timed on a clean clone with the images already downloaded, that whole sequence takes **20 seconds**,
+and there is no database to install at either end of it. Leave `.env` out and compose refuses to
+start rather than quietly bringing up a database with a blank password:
+
+```console
+$ docker compose up
+error while interpolating services.db.environment.POSTGRES_PASSWORD:
+required variable POSTGRES_PASSWORD is missing a value: set POSTGRES_PASSWORD in .env — copy .env.example
+```
+
 Open **<http://localhost:3000/docs>** for Swagger UI, where every endpoint below can be run with the
 **Try it out** button — no curl required.
 
@@ -321,7 +331,23 @@ Node was running. It now runs a real `SELECT 1`:
 { "status": "ok", "db": "ok" }
 ```
 
-and answers **503** with `{"status":"degraded","db":"unreachable"}` when the database is gone.
+Stopping the database out from under a running API, and starting it again:
+
+```console
+$ docker compose stop db
+$ curl -s -o /dev/null -w '%{http_code}' localhost:3000/health
+503  {"status":"degraded","db":"unreachable","error":"getaddrinfo ENOTFOUND db"}
+
+$ docker compose start db
+$ curl -s localhost:3000/health
+200  {"status":"ok","db":"ok"}
+
+$ curl -s -o /dev/null -w '%{http_code}' localhost:3000/tasks
+200
+```
+
+The API process never restarted. The pool discarded the dead connections, opened new ones when the
+database came back, and `/tasks` answered as if nothing had happened.
 
 That is the endpoint a **load balancer** polls, and the reason the status code matters more than the
 body. A load balancer sits in front of several copies of an app and sends each request to one of
@@ -430,8 +456,9 @@ common way to build a stack that works perfectly all afternoon and is empty tomo
 ## Why the tests didn't change
 
 `test/api.test.js` describes the API as A1 left it — the endpoints, the request and response shapes,
-the status codes. It does not contain the words SQLite, Postgres, container, table, row or query. It
-talks to the server over HTTP, exactly like any other client.
+the status codes. Outside of one comment at the top explaining why, the words SQLite, Postgres,
+container, table and query do not appear in it. It talks to the server over HTTP, exactly like any
+other client.
 
 **Not one assertion in it changed for this assignment.** The only edit was five lines of fixture in
 `before`/`after`: A2's "make a throwaway directory" became "create a throwaway database", because
