@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import express from 'express';
 import swaggerUi from 'swagger-ui-express';
+import { listTasks, getTask } from './db.js';
 
 const openapiSpec = JSON.parse(readFileSync(new URL('./openapi.json', import.meta.url)));
 
@@ -18,20 +19,25 @@ app.use((err, req, res, next) => {
   next(err);
 });
 
-// Built fresh on every call so that PUT-ing a seed task and then POST /reset
-// hands back the original wording rather than the mutated copy.
+// Migration in progress: reads come from SQLite (see db.js), while the write
+// endpoints below still push onto this list. They move to SQL in Stages 2 and 3.
 const seedTasks = () => [
   { id: 1, title: 'Read the assignment', done: true },
   { id: 2, title: 'Build the Task API', done: false },
   { id: 3, title: 'Push it to GitHub', done: false },
 ];
 
-// The "database": an in-memory list. Everything here is lost on restart.
 let tasks = seedTasks();
 
-// Next free id: one past the highest in use, so deleting the last task
-// doesn't hand its id to the next one created.
 const nextId = () => (tasks.length ? Math.max(...tasks.map((t) => t.id)) + 1 : 1);
+
+// `/tasks/abc` used to become NaN and simply miss every list entry. A NaN handed
+// to a SQL parameter is a different kind of nothing, so bad ids are caught here
+// and answered with the same 404 as an id that is merely unused.
+const parseId = (raw) => {
+  const id = Number(raw);
+  return Number.isInteger(id) ? id : undefined;
+};
 
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec, { customSiteTitle: 'Task API — docs' }));
 
@@ -54,7 +60,7 @@ app.get('/health', (req, res) => {
 
 app.get('/tasks', (req, res) => {
   const { done, search, limit, offset } = req.query;
-  let result = tasks;
+  let result = listTasks();
 
   if (done !== undefined) {
     if (done !== 'true' && done !== 'false') {
@@ -89,8 +95,9 @@ app.get('/tasks', (req, res) => {
 });
 
 app.get('/stats', (req, res) => {
-  const done = tasks.filter((t) => t.done).length;
-  res.json({ total: tasks.length, done, open: tasks.length - done });
+  const all = listTasks();
+  const done = all.filter((t) => t.done).length;
+  res.json({ total: all.length, done, open: all.length - done });
 });
 
 app.post('/reset', (req, res) => {
@@ -99,8 +106,8 @@ app.post('/reset', (req, res) => {
 });
 
 app.get('/tasks/:id', (req, res) => {
-  const id = Number(req.params.id);
-  const task = tasks.find((t) => t.id === id);
+  const id = parseId(req.params.id);
+  const task = id === undefined ? undefined : getTask(id);
   if (!task) {
     return res.status(404).json({ error: `Task ${req.params.id} not found` });
   }

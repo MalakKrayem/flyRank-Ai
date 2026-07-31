@@ -41,4 +41,15 @@ const seedIfEmpty = db.transaction(() => {
 
 seedIfEmpty();
 
+// SQLite has no boolean type, so `done` comes back as 0 or 1. The API promised
+// true/false in A1, so every row is translated on its way out — the one place
+// that knows about the 0/1 representation is this file.
+const toTask = (row) => (row === undefined ? undefined : { ...row, done: Boolean(row.done) });
+
+export const listTasks = () => db.prepare('SELECT * FROM tasks ORDER BY id').all().map(toTask);
+
+// The ? is a parameterized placeholder: the id travels beside the query, never
+// inside its text, so nothing a client sends can be read as SQL.
+export const getTask = (id) => toTask(db.prepare('SELECT * FROM tasks WHERE id = ?').get(id));
+
 export default db;
