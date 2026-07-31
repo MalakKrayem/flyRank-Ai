@@ -2,3 +2,8 @@ node_modules/
 dist/
 .env
 .DS_Store
+
+# The database is generated, not source: it is created and seeded on first run,
+# so every clone starts from the same three example tasks rather than from mine.
+tasks.db
+
