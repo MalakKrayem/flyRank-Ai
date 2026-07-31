@@ -1,0 +1,27 @@
+# What never goes into the image. Everything listed here is either useless inside
+# a container, or actively dangerous to copy into one.
+
+# The host's node_modules are built for the host's OS and architecture; the image
+# installs its own. Copying these in is also the slowest possible way to build.
+node_modules
+frontend/node_modules
+
+# The secret. Even though the Dockerfile never COPYs it, an image is a thing you
+# push to a registry and hand to other people, and a password that is not in it
+# cannot leak out of it. In compose the values arrive as environment variables at
+# run time, which is where secrets belong.
+.env
+
+# History and tooling — large, and of no use to a running server.
+.git
+.github
+.claude
+
+# Not part of the API: A2's leftover database file, the tests, the docs, and the
+# React client, which is served by Vite in development and would be built
+# separately if it were ever deployed.
+tasks.db
+test
+docs
+frontend
+README.md

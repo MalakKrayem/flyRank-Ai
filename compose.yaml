@@ -1,0 +1,61 @@
+# The whole system in one file: an API and the database it talks to, on a private
+# network they share, with a volume under the database so the rows outlive the
+# containers. `docker compose up` starts both; `docker compose down` stops both.
+#
+# Every ${VALUE} below is read from .env, which is git-ignored. Copy .env.example
+# to .env and this file has everything it needs.
+
+services:
+  api:
+    build: .
+    ports:
+      - '${PORT:-3000}:3000'
+    environment:
+      # `db`, not `localhost`. Inside the compose network each service is
+      # reachable by its own name, and `localhost` inside the api container means
+      # the api container — an address where nothing is listening on 5432. This
+      # one line is the mistake everybody makes once.
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-tasks}
+    depends_on:
+      db:
+        # Not the bare `depends_on: [db]`. On its own that waits for the container
+        # to *start*, and a Postgres container is started for a second or two
+        # before it is ready to answer. `condition: service_healthy` waits for the
+        # healthcheck below to pass, which is the thing actually worth waiting for.
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    # Pinned, not `postgres:latest`. "The newest one" is a different database on
+    # different days, and a major-version jump is the kind of surprise you want to
+    # opt into deliberately. -alpine because it is a fraction of the size.
+    image: postgres:17-alpine
+    environment:
+      # No default and no fallback: if POSTGRES_PASSWORD is missing, compose stops
+      # with this message instead of starting a database with a blank password.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env — copy .env.example}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-tasks}
+    ports:
+      # Published so psql, a GUI, and `npm test` can reach the database from the
+      # host. The api does not need this — it reaches `db` over the internal
+      # network — so in a real deployment this line would be deleted.
+      - '5432:5432'
+    volumes:
+      # The whole point. Postgres writes its data under this path; a named volume
+      # is disk that Docker keeps outside the container, so `docker compose down`
+      # can throw the container away and the rows stay exactly where they were.
+      - taskdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-tasks}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      # Retries alone are not enough on a first run: an empty volume means the
+      # database has to initialise before it can be ready, and a container that
+      # fails its healthcheck while still starting up is not unhealthy yet.
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  taskdata:
