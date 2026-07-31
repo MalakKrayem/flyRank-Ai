@@ -1,9 +1,15 @@
 node_modules/
 dist/
-.env
 .DS_Store
 
-# The database is generated, not source: it is created and seeded on first run,
-# so every clone starts from the same three example tasks rather than from mine.
-tasks.db
+# The one line in this file that would be a real incident if it were missing.
+# .env holds the database password; .env.example is committed in its place, with
+# the same keys and placeholder values, so a clone knows what to set without ever
+# being told a secret. A password that reaches Git is public even after you delete
+# it — the commit that added it is still in the history.
+.env
 
+# The database is generated, not source. Under Postgres the rows live in a Docker
+# volume rather than in the repo; tasks.db is what A2 left behind and is kept
+# ignored so an old clone does not suddenly start committing one.
+tasks.db
