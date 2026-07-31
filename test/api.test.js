@@ -1,12 +1,12 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { client, makeWorkDir, removeWorkDir, startServer, stopServer } from './helpers.js';
+import { client, createStore, destroyStore, startServer, stopServer } from './helpers.js';
 
 // These tests describe the API exactly as Assignment 1 left it: endpoints,
 // request shapes, response shapes, status codes. Not one line of this file
-// mentions SQLite, a table, or a query — which is the point. They were written
-// against the in-memory version and they pass, unchanged, against the
-// database-backed one. See the README section "Why the tests didn't change".
+// mentions SQLite, Postgres, a table, or a query — which is the point. They were
+// written against the in-memory version and they pass, unchanged, against both
+// database-backed ones. See the README section "Why the tests didn't change".
 //
 // Run them with: npm test
 
@@ -14,16 +14,16 @@ const PORT = Number(process.env.TEST_PORT ?? 3100);
 const { api, post, put, del } = client(PORT);
 
 let server;
-let workDir;
+let store;
 
 before(async () => {
-  workDir = makeWorkDir();
-  server = await startServer({ port: PORT, workDir });
+  store = await createStore();
+  server = await startServer({ port: PORT, store });
 });
 
 after(async () => {
   await stopServer(server);
-  removeWorkDir(workDir);
+  await destroyStore(store);
 });
 
 describe('the API contract carried over from Assignment 1', () => {

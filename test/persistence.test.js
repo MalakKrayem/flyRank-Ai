@@ -1,31 +1,32 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { client, makeWorkDir, removeWorkDir, startServer, stopServer } from './helpers.js';
+import { client, createStore, destroyStore, startServer, stopServer } from './helpers.js';
 
 // Everything Assignment 1 could not do. Each test here stops the server and
-// starts a new one against the same database file — the in-memory version fails
-// all of them by design, which is exactly what Week 3 set out to change.
+// starts a new one against the same database — the in-memory version fails all of
+// them by design, which is what A2 set out to change and what A3 kept while
+// moving the storage out of the process altogether and into a container.
 
 const PORT = Number(process.env.TEST_PORT ?? 3101);
 const { api, post, put } = client(PORT);
 
 let server;
-let workDir;
+let store;
 
-// One database file, many server lifetimes.
+// One database, many server lifetimes.
 const restart = async () => {
   await stopServer(server);
-  server = await startServer({ port: PORT, workDir });
+  server = await startServer({ port: PORT, store });
 };
 
 before(async () => {
-  workDir = makeWorkDir();
-  server = await startServer({ port: PORT, workDir });
+  store = await createStore();
+  server = await startServer({ port: PORT, store });
 });
 
 after(async () => {
   await stopServer(server);
-  removeWorkDir(workDir);
+  await destroyStore(store);
 });
 
 describe('what the database bought us', () => {
