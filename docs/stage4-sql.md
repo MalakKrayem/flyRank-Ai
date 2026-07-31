@@ -22,7 +22,8 @@ sqlite3 tasks.db
 ```
 
 Three rows — the same three tasks `GET /tasks` serves, laid out as a table. Note `done` is `1`/`0`
-here, not `true`/`false`: SQLite has no boolean type, and `db.js` is the one place that translates.
+here, not `true`/`false`: SQLite has no boolean type, and
+`src/repositories/task.repository.js` is the one place that translates.
 
 ### `SELECT * FROM tasks WHERE done = 1;` — only completed tasks
 

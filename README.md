@@ -76,7 +76,8 @@ What it is *not* good at is many machines writing at once — that is the point 
 to Postgres or MySQL. For one server and one to-do list, that trade is free.
 
 The library is [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3), whose queries are
-synchronous: no `await`, no callbacks, and `db.js` reads top to bottom.
+synchronous: no `await`, no callbacks, and
+[`task.repository.js`](src/repositories/task.repository.js) reads top to bottom.
 
 ### Where the database file lives
 
@@ -108,7 +109,8 @@ CREATE INDEX idx_tasks_title ON tasks(title COLLATE NOCASE, id);
 ```
 
 SQLite has no boolean type, so `done` is stored as `0`/`1` and translated to `true`/`false` on its
-way out — [`db.js`](db.js) is the only file that knows about that.
+way out — [`task.repository.js`](src/repositories/task.repository.js) is the only file that knows
+about that.
 
 **What the indexes are for.** An index is a sorted copy of one or more columns that the database
 keeps beside the table, so it can jump straight to matching rows instead of reading every row to find
@@ -175,7 +177,9 @@ Browser and the API are not two copies of the data. They are two windows onto on
 | `GET` | `/docs` | Swagger UI | `200` | — |
 | `GET` | `/openapi.json` | The raw OpenAPI 3.0 spec | `200` | — |
 
-Every error response is JSON in the shape `{ "error": "..." }`.
+Every error response is JSON in the shape `{ "error": "..." }` — including the ones no route asked
+for. An unknown URL answers `404 {"error":"Cannot GET /nope"}` rather than falling through to
+Express's built-in HTML error page.
 
 ### The task shape
 
@@ -311,25 +315,76 @@ assertions.
 ## Project layout
 
 ```
-server.js        the API — routes, validation, status codes. Knows no SQL.
-db.js            the storage layer — schema, seeding, and every query
-openapi.json     the OpenAPI 3.0 spec that Swagger UI renders at /docs
-tasks.db         the database (generated on first run, git-ignored)
+server.js                    entry point: start listening, nothing else
+src/
+  app.js                     assembles the Express app from the layers
+  config.js                  PORT, DB_FILE, OPENAPI_FILE — all env reading
+  errors.js                  HttpError + badRequest/notFound
+  openapi.js                 reads the spec once at startup
+  routes/                    URL -> controller. The map of the API.
+    task.routes.js
+    meta.routes.js
+  controllers/               HTTP in, HTTP out: parse req, pick status code
+    task.controller.js
+    meta.controller.js
+  services/                  the rules: validation, "does this exist"
+    task.service.js
+  repositories/              the only file containing SQL
+    task.repository.js
+  db/
+    connection.js            opens tasks.db
+    schema.js                table, indexes, migration, seed rows
+    index.js                 runs the schema, then exports the connection
+  middleware/
+    not-found.js             unmatched URL -> a JSON 404
+    error-handler.js         thrown error -> a JSON response
+openapi.json                 the OpenAPI 3.0 spec Swagger UI renders at /docs
+tasks.db                     the database (generated on first run, git-ignored)
 test/
-  api.test.js         the A1 contract — passes against both implementations
-  persistence.test.js what the database bought: survives restarts, seeds once
+  api.test.js                the A1 contract — passes against both implementations
+  persistence.test.js        what the database bought: survives restarts, seeds once
 docs/
-  stage4-sql.md  the by-hand SQL session and what each query returned
+  stage4-sql.md              the by-hand SQL session and what each query returned
 frontend/
-  vite.config.js dev-server proxy to the API on port 3000
-  src/api.js     fetch wrapper — unwraps the { error } bodies
-  src/App.jsx    the task list, filters and stats
-  src/TaskRow.jsx one row: toggle, inline rename, delete
+  vite.config.js             dev-server proxy to the API on port 3000
+  src/api.js                 fetch wrapper — unwraps the { error } bodies
+  src/App.jsx                the task list, filters and stats
+  src/TaskRow.jsx            one row: toggle, inline rename, delete
 ```
 
-The split is the shape of the assignment: `server.js` decides *what the API promises*, `db.js`
-decides *where the data is kept*. Moving from a list to a database touched the second file and left
-the first one's routes doing the same job in the same order.
+### How the layers divide the work
+
+A request falls straight down and the answer comes straight back up:
+
+```
+HTTP  ->  routes  ->  controller  ->  service  ->  repository  ->  SQLite
+          which     translates      the rules     the queries
+          handler   req/res
+```
+
+The rule that keeps it honest is that **each layer may only know about the one below it**:
+
+| Layer | Knows about | Must not know about |
+| --- | --- | --- |
+| `routes/` | which controller handles which URL | anything else |
+| `controllers/` | `req`, `res`, status codes, query strings | SQL, tables, `0`/`1` |
+| `services/` | what makes a task valid, what "missing" means | HTTP, status codes, SQL |
+| `repositories/` | tables, columns, `?` placeholders | HTTP, validation |
+
+The payoff is visible in `task.controller.js`: there is not one `try`/`catch` in it. The service
+throws `notFound(...)` or `badRequest(...)` — errors that carry a meaning, not a status code — and a
+single [error handler](src/middleware/error-handler.js) at the end of the stack is the only place in
+the project that decides a 400 looks different from a 404. Add an endpoint and you write a route, a
+thin controller and a service function; you do not re-implement error handling.
+
+The same rule is why the Week 3 migration was small. `services/` and above deal in task objects and
+never mention a table, so moving from an array to SQLite meant rewriting `repositories/` and `db/`
+and leaving every layer above them alone.
+
+Splitting into layers was a **refactor, not a rewrite**: it happened after the migration was
+finished, and `npm test` reports the same 19 passing tests before and after. That is the second time
+in this project the test suite has been used to prove that something big changed underneath while the
+API stayed still.
 
 ## Notes on design
 
@@ -368,4 +423,4 @@ The feeling is the point. Changing code is free — you replace the old text wit
 Changing a table's shape is not, because the old shape is still out there holding real data you are
 not allowed to lose, and the change has to be written as instructions for getting from one to the
 other. That set of instructions is a migration, and this one is about fifteen lines at the top of
-[`db.js`](db.js) doing by hand what a migration tool would generate.
+[`db/schema.js`](src/db/schema.js) doing by hand what a migration tool would generate.
