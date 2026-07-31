@@ -52,4 +52,14 @@ export const listTasks = () => db.prepare('SELECT * FROM tasks ORDER BY id').all
 // inside its text, so nothing a client sends can be read as SQL.
 export const getTask = (id) => toTask(db.prepare('SELECT * FROM tasks WHERE id = ?').get(id));
 
+// The database hands out the id, so nothing in the app has to track "the next
+// one" any more. lastInsertRowid is the id it chose; the row is read straight
+// back so the response carries whatever the table actually stored.
+export const createTask = (title) => {
+  const { lastInsertRowid } = db
+    .prepare('INSERT INTO tasks (title, done) VALUES (?, ?)')
+    .run(title, 0);
+  return getTask(lastInsertRowid);
+};
+
 export default db;

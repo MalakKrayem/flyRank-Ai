@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import express from 'express';
 import swaggerUi from 'swagger-ui-express';
-import { listTasks, getTask } from './db.js';
+import { listTasks, getTask, createTask } from './db.js';
 
 const openapiSpec = JSON.parse(readFileSync(new URL('./openapi.json', import.meta.url)));
 
@@ -28,8 +28,6 @@ const seedTasks = () => [
 ];
 
 let tasks = seedTasks();
-
-const nextId = () => (tasks.length ? Math.max(...tasks.map((t) => t.id)) + 1 : 1);
 
 // `/tasks/abc` used to become NaN and simply miss every list entry. A NaN handed
 // to a SQL parameter is a different kind of nothing, so bad ids are caught here
@@ -119,9 +117,7 @@ app.post('/tasks', (req, res) => {
   if (typeof title !== 'string' || title.trim() === '') {
     return res.status(400).json({ error: 'Field "title" is required and must be a non-empty string' });
   }
-  const task = { id: nextId(), title: title.trim(), done: false };
-  tasks.push(task);
-  res.status(201).json(task);
+  res.status(201).json(createTask(title.trim()));
 });
 
 app.put('/tasks/:id', (req, res) => {
