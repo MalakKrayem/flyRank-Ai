@@ -3,7 +3,7 @@
   "info": {
     "title": "Task API",
     "version": "1.0.0",
-    "description": "A small CRUD API for a to-do list. Tasks are held in memory only, so the list resets to its three seed tasks every time the server restarts."
+    "description": "A small CRUD API for a to-do list. Tasks are stored in a SQLite database (tasks.db), so they survive a restart of the server. The file and its table are created and seeded automatically on first run."
   },
   "servers": [
     {

@@ -156,7 +156,7 @@ export default function App() {
       )}
 
       <footer className="footer">
-        <span>Data is in-memory — restarting the API brings the three seed tasks back.</span>
+        <span>Data lives in SQLite — it survives a restart. Reset puts the three seed tasks back.</span>
         <button type="button" className="link" onClick={() => run(api.resetTasks)}>
           Reset
         </button>
