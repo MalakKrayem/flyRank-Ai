@@ -1,68 +1,51 @@
-import { useCallback, useEffect, useState } from 'react';
-import * as api from './api.js';
-import TaskRow from './TaskRow.jsx';
-import AuthPanel from './AuthPanel.jsx';
+import { useEffect, useState } from 'react';
+import * as auth from './auth.js';
+import LoginScreen from './LoginScreen.jsx';
+import AccountBar from './AccountBar.jsx';
+import TaskList from './TaskList.jsx';
 
-const FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'open', label: 'Open' },
-  { key: 'done', label: 'Done' },
-];
-
-// The filter maps onto the API's ?done= query rather than being applied here,
-// so the list on screen is always whatever the server actually returned.
-const doneParam = (filter) => (filter === 'all' ? undefined : String(filter === 'done'));
+// The gate, and nothing else. One of three things renders: a brief checking
+// state, the login screen, or the app. Never two of them at once.
+//
+// Worth being honest about what this is and is not. Hiding the task list is a
+// *user interface* decision, not a security control — /tasks is still open, and
+// anyone can curl it. Real protection is the middleware on the server; a
+// frontend that hides a button in front of an unguarded endpoint has protected
+// nothing. What this does buy is that the app never renders in a half-state
+// where it cannot say who the user is.
 
 export default function App() {
-  const [tasks, setTasks] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [filter, setFilter] = useState('all');
-  const [search, setSearch] = useState('');
-  const [title, setTitle] = useState('');
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  const [checking, setChecking] = useState(true);
 
-  const refresh = useCallback(async () => {
-    try {
-      const [list, counts] = await Promise.all([
-        api.listTasks({ done: doneParam(filter), search: search.trim() }),
-        api.getStats(),
-      ]);
-      setTasks(list);
-      setStats(counts);
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [filter, search]);
-
-  // Debounced so typing in the search box doesn't fire a request per keystroke.
+  // A token in localStorage survives a reload; a *valid* token is a different
+  // claim. Ask the server rather than trusting what is on disk, so an expired
+  // token lands on the login screen instead of on an app that lies until the
+  // first click.
   useEffect(() => {
-    const id = setTimeout(refresh, 150);
-    return () => clearTimeout(id);
-  }, [refresh]);
-
-  const run = async (action) => {
-    try {
-      await action();
-      setError(null);
-      await refresh();
-    } catch (err) {
-      setError(err.message);
+    if (!auth.getToken()) {
+      setChecking(false);
+      return;
     }
-  };
 
-  const handleAdd = (event) => {
-    event.preventDefault();
-    // Deliberately not blocked client-side: the server owns this rule, and
-    // submitting an empty title shows its 400 coming back through the UI.
-    run(async () => {
-      await api.createTask(title);
-      setTitle('');
-    });
-  };
+    auth
+      .getProfile()
+      .then(({ user: verified }) => setUser(verified))
+      .catch(() => auth.clearToken())
+      .finally(() => setChecking(false));
+  }, []);
+
+  if (checking) {
+    return (
+      <main className="gate">
+        <p className="empty">Checking your session…</p>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen onSignedIn={setUser} />;
+  }
 
   return (
     <main className="app">
@@ -77,93 +60,11 @@ export default function App() {
             .
           </p>
         </div>
-        {stats && (
-          <dl className="stats" aria-label="Task counts">
-            <div>
-              <dt>Total</dt>
-              <dd>{stats.total}</dd>
-            </div>
-            <div>
-              <dt>Open</dt>
-              <dd>{stats.open}</dd>
-            </div>
-            <div>
-              <dt>Done</dt>
-              <dd>{stats.done}</dd>
-            </div>
-          </dl>
-        )}
       </header>
 
-      <AuthPanel />
+      <AccountBar user={user} onSignedOut={() => setUser(null)} />
 
-      <form className="add" onSubmit={handleAdd}>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="What needs doing?"
-          aria-label="New task title"
-        />
-        <button type="submit">Add task</button>
-      </form>
-
-      <div className="controls">
-        <div className="filters" role="group" aria-label="Filter tasks">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              className={filter === f.key ? 'chip chip--active' : 'chip'}
-              aria-pressed={filter === f.key}
-              onClick={() => setFilter(f.key)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <input
-          className="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search titles…"
-          aria-label="Search tasks"
-        />
-      </div>
-
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-
-      {loading ? (
-        <p className="empty">Loading…</p>
-      ) : tasks.length === 0 ? (
-        <p className="empty">
-          {search.trim() || filter !== 'all'
-            ? 'No tasks match this view.'
-            : 'Nothing here yet. Add your first task above.'}
-        </p>
-      ) : (
-        <ul className="list">
-          {tasks.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              onToggle={() => run(() => api.updateTask(task.id, { done: !task.done }))}
-              onRename={(newTitle) => run(() => api.updateTask(task.id, { title: newTitle }))}
-              onDelete={() => run(() => api.deleteTask(task.id))}
-            />
-          ))}
-        </ul>
-      )}
-
-      <footer className="footer">
-        <span>Data lives in Postgres, in a container — it survives a restart of the app and of the database. Reset puts the three seed tasks back.</span>
-        <button type="button" className="link" onClick={() => run(api.resetTasks)}>
-          Reset
-        </button>
-      </footer>
+      <TaskList />
     </main>
   );
 }
