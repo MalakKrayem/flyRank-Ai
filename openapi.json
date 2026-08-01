@@ -3,7 +3,7 @@
   "info": {
     "title": "Task API",
     "version": "1.0.0",
-    "description": "A small CRUD API for a to-do list. Tasks are stored in a PostgreSQL database running in a Docker container, so they survive a restart of the server and a rebuild of its container. The table is created and seeded automatically on first run. The whole stack starts with `docker compose up`."
+    "description": "A small CRUD API for a to-do list, with user accounts on top. Tasks are stored in a PostgreSQL database running in a Docker container, so they survive a restart of the server and a rebuild of its container. Accounts live in Supabase Auth, which hashes the passwords and signs the tokens \u2014 this API never does either.\n\nRoutes marked with a padlock need a bearer token. To use them here: call `POST /auth/login`, copy the `access_token` out of the response, click **Authorize** at the top of this page and paste it in. Every locked route below will then send it for you.\n\nThe whole stack starts with `docker compose up`."
   },
   "servers": [
     {
@@ -12,6 +12,18 @@
     }
   ],
   "tags": [
+    {
+      "name": "Auth",
+      "description": "Sign up, log in, log out \u2014 handled by Supabase Auth"
+    },
+    {
+      "name": "Protected",
+      "description": "Routes that answer only for a verified bearer token"
+    },
+    {
+      "name": "Public",
+      "description": "Routes that answer for anyone, with no token at all"
+    },
     {
       "name": "Tasks",
       "description": "Create, read, update and delete tasks"
@@ -22,6 +34,250 @@
     }
   ],
   "paths": {
+    "/auth/signup": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Create an account",
+        "description": "Registers a new user with Supabase Auth. The password is sent straight to Supabase, which hashes and stores it \u2014 this API never sees a stored password and never hashes anything itself.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Account created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`email` or `password` missing from the body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Supabase refused the credentials \u2014 an address that is not an address, or a password under six characters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Log in and get a token",
+        "description": "Exchanges credentials for a signed JWT. Copy the `access_token` from the response into the **Authorize** dialog at the top of this page to use the locked routes below.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Credentials"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`email` or `password` missing from the body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Wrong password, or no such account. Deliberately the same message for both \u2014 telling them apart would let anyone discover which addresses have accounts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "End the session",
+        "description": "Revokes the session behind the presented token. Protected, because you cannot end a session without proving you are in it.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Signed out. Nothing to say about it."
+          },
+          "401": {
+            "description": "No token, a malformed `Authorization` header, or a token Supabase rejected as invalid or expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/protected/profile": {
+      "get": {
+        "tags": [
+          "Protected"
+        ],
+        "summary": "Read your own profile",
+        "description": "Returns the account behind the token. The token is verified with Supabase on every call, so the answer is about whoever the token really belongs to \u2014 not whoever the client claims to be.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The verified user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "$ref": "#/components/schemas/User"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, a malformed `Authorization` header, or a token Supabase rejected as invalid or expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/protected/dashboard": {
+      "get": {
+        "tags": [
+          "Protected"
+        ],
+        "summary": "A second protected route",
+        "description": "Exists to prove the guard is reusable: it was added without one new line of auth code, and is protected purely by sitting behind the same middleware as `/protected/profile`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The verified user, greeted by name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Welcome back, you@example.com."
+                    },
+                    "user": {
+                      "$ref": "#/components/schemas/User"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, a malformed `Authorization` header, or a token Supabase rejected as invalid or expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/public/info": {
+      "get": {
+        "tags": [
+          "Public"
+        ],
+        "summary": "Public information",
+        "description": "Open to anyone. Useful as the control in the experiment: when a protected route answers 401, this one proves the server itself is reachable.",
+        "responses": {
+          "200": {
+            "description": "The public message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Welcome stranger! This info is public."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/": {
       "get": {
         "tags": [
@@ -428,6 +684,72 @@
           }
         }
       },
+      "Credentials": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "you@example.com"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "minLength": 6,
+            "example": "password123"
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "description": "The safe subset of the Supabase user. The full object carries identity records and app metadata that no client has a reason to see.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "9c8f0d2a-1b3e-4f5a-8c7d-6e5f4a3b2c1d"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "you@example.com"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "description": "The JWT to send on protected routes. Short-lived \u2014 one hour by default.",
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          },
+          "refresh_token": {
+            "type": "string",
+            "description": "Longer-lived token used to obtain a new access token without logging in again."
+          },
+          "token_type": {
+            "type": "string",
+            "example": "bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "description": "Seconds until the access token expires.",
+            "example": 3600
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        }
+      },
       "Error": {
         "type": "object",
         "required": [
@@ -439,6 +761,14 @@
             "example": "Task 99 not found"
           }
         }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "The `access_token` returned by `POST /auth/login`. Sent as `Authorization: Bearer <token>`. Supabase signs it and this API verifies it with Supabase on every request \u2014 a token altered by even one character is rejected."
       }
     }
   }
