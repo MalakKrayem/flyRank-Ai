@@ -2,6 +2,8 @@ import express from 'express';
 import swaggerUi from 'swagger-ui-express';
 import taskRoutes from './routes/task.routes.js';
 import authRoutes from './routes/auth.routes.js';
+import publicRoutes from './routes/public.routes.js';
+import protectedRoutes from './routes/protected.routes.js';
 import metaRoutes from './routes/meta.routes.js';
 import { notFoundHandler } from './middleware/not-found.js';
 import { errorHandler } from './middleware/error-handler.js';
@@ -26,6 +28,8 @@ app.use(express.json());
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec, { customSiteTitle: 'Task API — docs' }));
 
 app.use('/auth', authRoutes);
+app.use('/public', publicRoutes);
+app.use('/protected', protectedRoutes);
 app.use('/tasks', taskRoutes);
 app.use('/', metaRoutes);
 
