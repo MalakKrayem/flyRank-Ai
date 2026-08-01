@@ -15,7 +15,10 @@ The whole stack — API and database — starts with **one command**:
 cp .env.example .env && docker compose up
 ```
 
-![Swagger UI listing every endpoint of the Task API](docs/swagger-ui.png)
+![Swagger UI showing the Auth, Protected and Public route groups, with an Authorize button and a padlock on /auth/logout, /protected/profile and /protected/dashboard](docs/swagger-auth.png)
+
+The padlocks are not decoration. They are generated from the same `security` blocks in
+`openapi.json` that mark which routes the middleware guards — three of them, and no others.
 
 ## The point of this one
 
@@ -169,6 +172,9 @@ uses the same endpoints, so the CRUD cycle can be driven from a real UI instead 
 
 ![The React client listing tasks, with total/open/done counts and filters](docs/react-client.png)
 
+*(That shot predates A4, so it is missing the signed-in header strip that now sits above the list.
+Everything below the title is unchanged.)*
+
 With the API already running, in a second terminal:
 
 ```bash
@@ -176,11 +182,14 @@ npm install --prefix frontend
 npm run dev --prefix frontend
 ```
 
-Then open **<http://localhost:5173>**. It lists tasks, adds them, renames them inline, ticks them off,
-deletes them, filters by state, searches, and shows the live counts from `/stats`.
+Then open **<http://localhost:5173>**. Since A4 it opens on the [login screen](#what-it-looks-like);
+sign in and it lists tasks, adds them, renames them inline, ticks them off, deletes them, filters by
+state, searches, and shows the live counts from `/stats` — with a header strip carrying your account
+and buttons that call the protected routes, including one that tampers with the token first.
 
 The API sends no CORS headers and does not need to: the Vite dev server proxies `/tasks`, `/stats`,
-`/reset` and `/health` to port 3000, so the browser only ever talks to one origin.
+`/reset`, `/health`, `/auth`, `/protected` and `/public` to port 3000, so the browser only ever talks
+to one origin.
 
 ## Containers, in the smallest number of words
 
@@ -349,6 +358,16 @@ Step 4 is a real network call, and that is the point. A JWT is *signed*, not *se
 into [jwt.io](https://jwt.io) and you can read every claim inside it, which is exactly why you never
 put a secret in one. What you cannot do is change a character and have the signature still match, and
 only the key-holder can tell. Supabase holds that key; this server does not, so it asks.
+
+### What it looks like
+
+The React client renders one screen at a time. With no verified user there is no task list on the
+page at all — not hidden with CSS, not rendered:
+
+![The Task API login screen: a Log in / Sign up card with email and password fields, and two buttons underneath labelled /public/info and /protected/profile](docs/login-gate.png)
+
+The two buttons at the foot of the card send no token on purpose. They answer `200` and `401`
+respectively, which is the Stage 2 checkpoint from the screen where it is most convincing.
 
 ### The five doors
 
