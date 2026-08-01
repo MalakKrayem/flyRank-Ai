@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: Object.fromEntries(
-      ['/tasks', '/stats', '/reset', '/health'].map((path) => [
+      ['/tasks', '/stats', '/reset', '/health', '/auth', '/protected', '/public'].map((path) => [
         path,
         { target: 'http://localhost:3000', changeOrigin: true },
       ]),

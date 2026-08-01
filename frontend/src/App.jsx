@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as api from './api.js';
 import TaskRow from './TaskRow.jsx';
+import AuthPanel from './AuthPanel.jsx';
 
 const FILTERS = [
   { key: 'all', label: 'All' },
@@ -93,6 +94,8 @@ export default function App() {
           </dl>
         )}
       </header>
+
+      <AuthPanel />
 
       <form className="add" onSubmit={handleAdd}>
         <input

@@ -87,10 +87,174 @@ h1 {
   font-weight: 600;
 }
 
+/* --- the auth panel -------------------------------------------------------
+   Visually a card rather than part of the task list, because it is a different
+   subject: the list is the app, this is the door. */
+
+.auth {
+  margin: 28px 0 8px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.auth__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.auth h2 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.badge {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.badge--in {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.auth__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.auth__form input {
+  flex: 1;
+  min-width: 150px;
+  font-size: 14px;
+  padding: 8px 12px;
+}
+
+.auth__user {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 14px 0 0;
+}
+
+.auth__user dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.auth__user dd {
+  margin: 3px 0 0;
+  font-size: 14px;
+  word-break: break-all;
+}
+
+.auth__id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px !important;
+  color: var(--muted);
+}
+
+.auth__calls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.auth button {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.auth button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.auth button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.auth button.danger {
+  border-color: transparent;
+  color: var(--danger);
+}
+
+/* An <output> is inline by default, which would collapse the <pre> inside it. */
+.auth__out {
+  display: block;
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.auth__out--bad {
+  border-color: var(--danger);
+}
+
+.auth__label {
+  display: block;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.auth__out--bad .auth__label {
+  border-bottom-color: var(--danger);
+  color: var(--danger);
+}
+
+.auth__out pre {
+  margin: 0;
+  padding: 12px;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.auth__note {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.auth__note code {
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--bg);
+}
+
 .add {
   display: flex;
   gap: 8px;
-  margin: 28px 0 16px;
+  margin: 20px 0 16px;
 }
 
 input {
