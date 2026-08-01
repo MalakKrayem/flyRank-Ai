@@ -1,11 +1,13 @@
 # Task API
 
-A small CRUD API that manages a to-do list — create, read, update and delete tasks — with interactive
-Swagger UI documentation at `/docs`.
+A small CRUD API that manages a to-do list — create, read, update and delete tasks — with **user
+accounts, JWT-protected routes** and interactive Swagger UI documentation at `/docs`.
 
 Built for **FlyRank Internship · Backend Track** — the API and Swagger UI in A1, its storage moved
-onto a real database in A2, and in A3 that database became **PostgreSQL running in a container**,
-with the app beside it. JavaScript lane: Node.js + Express + Postgres + Docker Compose.
+onto a real database in A2, in A3 that database became **PostgreSQL running in a container** with the
+app beside it, and in A4 the API stopped answering to strangers: **Supabase Auth** issues the tokens
+and one middleware verifies them. JavaScript lane: Node.js + Express + Postgres + Docker Compose +
+Supabase.
 
 The whole stack — API and database — starts with **one command**:
 
@@ -33,10 +35,15 @@ things underneath. That is not a coincidence — it is what the layers were for,
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) or [Podman](https://podman.io) —
   `docker --version` to check.
+- A free [Supabase](https://supabase.com) project — no credit card. It takes about two minutes; see
+  [Setting up Supabase](#setting-up-supabase).
 
-That is the entire list. **You do not install Postgres and you do not install Node.** Both arrive as
-containers, described by [`compose.yaml`](compose.yaml) and [`Dockerfile`](Dockerfile), and both are
-thrown away when you are finished with them.
+**You do not install Postgres and you do not install Node.** Both arrive as containers, described by
+[`compose.yaml`](compose.yaml) and [`Dockerfile`](Dockerfile), and both are thrown away when you are
+finished with them.
+
+Supabase is the one piece that is not a container. It is a service on the internet holding the user
+accounts, and it is why this repo is the first one that cannot run entirely on your laptop.
 
 Node.js 20.12+ is needed only if you want to run the app or the tests directly on your machine
 instead of in a container.
@@ -90,10 +97,37 @@ told a secret.
 | `POSTGRES_DB` | Database created on first start | `tasks` |
 | `PORT` | Host port the API is published on | `3000` |
 | `DATABASE_URL` | The whole connection as one string — used when you run the app *outside* compose (`npm start`, `npm test`) | `postgres://postgres:dev@localhost:5432/tasks` |
+| `SUPABASE_URL` | Your project's URL, from **Project Settings → API** | `https://your-project-ref.supabase.co` |
+| `SUPABASE_ANON_KEY` | The **anon** (public) key from the same page | `your_anon_key` |
 
 Under `docker compose up` the api service does not read `DATABASE_URL` from `.env`: compose builds
 one for it pointing at `db`, the database's *service name*, because inside the compose network
-`localhost` means "this container" and nothing is listening on 5432 there.
+`localhost` means "this container" and nothing is listening on 5432 there. The two Supabase values
+are the opposite case — Supabase is on the internet rather than on the compose network, so both lanes
+pass them through unchanged, and both refuse to start without them.
+
+> **The anon key is the public one, and that is not a compromise.** It is designed to be handed out;
+> on its own it can only do what an anonymous visitor may do. The `service_role` key is the dangerous
+> one — it bypasses every security rule — and this repo reads no variable for it, so there is nothing
+> to leak. If you ever find yourself pasting a key that starts with `service_role` into a `.env` a
+> client can reach, stop.
+
+### Setting up Supabase
+
+1. Create a free project at [supabase.com](https://supabase.com). Provisioning takes a minute or two.
+2. **Project Settings → API** — copy the **Project URL** and the **anon** key into `.env` as
+   `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
+3. **Authentication → Sign In / Providers → Email** — turn **Confirm email** *off*.
+
+Step 3 is not optional for a local run, and it is worth knowing why. With confirmation on, a fresh
+signup returns `201` and the matching login then fails with `email_not_confirmed` — the account
+exists but has no verified address behind it, so there is nothing to issue a token to. In production
+you would leave it on, because proving you own an address is a real security control. Here it would
+mean opening an inbox between every signup and every test.
+
+Not every address will do, either. Supabase rejects `@example.com` outright as a reserved domain, so
+the assignment's `test@example.com` comes back as `400 Email address "test@example.com" is invalid`.
+Use a real-looking address.
 
 ### Running it without Docker
 
@@ -288,10 +322,106 @@ the moment that makes the whole assignment click — running `UPDATE tasks SET d
 and watching `GET /tasks` report every task as done, with no restart and no syncing step. psql and
 the API are not two copies of the data. They are two clients of one server.
 
+## Authentication
+
+Until A4 this API was wide open: anyone who knew the URL could read, create or delete anything. That
+is fine for a to-do demo and a disaster for anything real. Now the server learns *who is calling*
+before it decides what to allow.
+
+**The one rule that shaped every line of it: this repo does not store a password and does not hash
+anything.** Rolling your own cryptography is how careers end. Supabase stores the accounts, hashes
+the passwords and signs the tokens; the backend's job — the part that actually matters here — is
+receiving a token, verifying it, and opening or refusing the door.
+
+### The trust triangle
+
+Nobody trusts a plain password sitting on an application server. Instead a third party vouches for
+the user by signing something, and this server checks the signature:
+
+| # | Who | What happens |
+| --- | --- | --- |
+| 1 | client → Supabase | Email and password go to Supabase. They never touch this API's storage. |
+| 2 | Supabase → client | Supabase checks them and returns a signed **JWT** — the access token. |
+| 3 | client → this API | The client calls a protected route with `Authorization: Bearer <token>`. |
+| 4 | this API → Supabase | The server asks Supabase "is this token real?". If yes, the door opens. |
+
+Step 4 is a real network call, and that is the point. A JWT is *signed*, not *secret* — paste one
+into [jwt.io](https://jwt.io) and you can read every claim inside it, which is exactly why you never
+put a secret in one. What you cannot do is change a character and have the signature still match, and
+only the key-holder can tell. Supabase holds that key; this server does not, so it asks.
+
+### The five doors
+
+| Method | Path | Purpose | Auth header |
+| --- | --- | --- | --- |
+| `POST` | `/auth/signup` | Create an account | none |
+| `POST` | `/auth/login` | Authenticate, receive a JWT | none |
+| `POST` | `/auth/logout` | End the session | `Authorization: Bearer <token>` |
+| `GET` | `/protected/profile` | Read private profile data | `Authorization: Bearer <token>` |
+| `GET` | `/public/info` | Read public, open data | none |
+
+Plus a sixth that exists to prove a point: `GET /protected/dashboard` was added **without one new
+line of auth code**. It rejects a forged token and admits a good one purely by sitting behind the
+same middleware. That reuse is the whole reason the check was extracted.
+
+### One guard, not a check in every room
+
+[`src/middleware/require-auth.js`](src/middleware/require-auth.js) is the entire security perimeter.
+It answers two different questions in order:
+
+- **Was a token presented, in the right place and the right shape?** Syntax — this server settles it
+  alone, with one regex over the whole header.
+- **Is it real, and whose is it?** Cryptography — only Supabase can settle it, so it is asked.
+
+Both failures are `401`, for opposite reasons. What the guard leaves behind matters as much as what
+it blocks: by the time a handler runs, `req.user` is a user Supabase vouched for rather than a claim
+from the client, so no handler downstream ever thinks about tokens again. Both protected handlers are
+three lines and neither mentions a header.
+
+[`protected.routes.js`](src/routes/protected.routes.js) applies it with `router.use` rather than
+listing it per route, so a route added later by someone who never reads that file is protected by
+default. Per-route guards work today and get forgotten exactly once — and an unguarded door looks
+identical to a guarded one from the outside.
+
+### Three details worth defending
+
+**A failed login says one thing, whatever went wrong.** "No such user" and "wrong password" are
+different facts, and answering them differently would let anyone enumerate which addresses have
+accounts. Both are `401 {"error":"Invalid login credentials"}`.
+
+**The extractor matches the whole header, not `split(' ')[1]`.** `Authorization: <token>` with no
+scheme is the most common way a hand-written one goes wrong: the split silently yields `undefined`,
+which downstream code either mistakes for "no token" or hands to the identity provider as a literal
+string. Here it is a `401`, the same as sending nothing at all.
+
+**Verification checks `error` *and* `data.user`.** The Supabase SDK does not throw — it resolves with
+`{ data, error }` and leaves the judgement to the caller. Code that reads `data.user` without ever
+looking at `error` will happily treat a rejected token as a success, and a client with no session can
+also come back as a clean response with a null user. Checking one and not the other is how a route
+ends up "authenticating" nobody.
+
+### Logout is not the obvious call
+
+`supabase.auth.signOut()` looks like the answer and does nothing here. Reading the SDK shows why: it
+looks up the *stored* session to decide which token to revoke, and this client deliberately stores
+none — a server that remembered a session would be remembering *someone's*, and would answer the next
+request as the wrong person. With no session found it returns success having called nothing: a logout
+that reports `204` and revokes exactly zero tokens.
+
+`supabase.auth.admin.signOut(jwt)` is the same `POST /logout` with the token passed in explicitly.
+The `admin` namespace is a naming accident rather than a permission level — it is authorised by the
+user's own token, and no `service_role` key is involved.
+
 ## Endpoints
 
 | Method | Path | What it does | Success | Errors |
 | --- | --- | --- | --- | --- |
+| `POST` | `/auth/signup` | Creates an account from `{"email":"...","password":"..."}` | `201` | `400` missing field · `422` Supabase refused the credentials |
+| `POST` | `/auth/login` | Exchanges credentials for a JWT | `200` | `400` missing field · `401` bad credentials |
+| `POST` | `/auth/logout` | Ends the session. **Bearer token required** | `204` | `401` missing/invalid token |
+| `GET` | `/protected/profile` | The verified user's `id`, `email`, `created_at`. **Bearer token required** | `200` | `401` missing/invalid token |
+| `GET` | `/protected/dashboard` | Same guard, no new auth code. **Bearer token required** | `200` | `401` missing/invalid token |
+| `GET` | `/public/info` | A public message | `200` | — |
 | `GET` | `/` | Describes the API | `200` | — |
 | `GET` | `/health` | Liveness check — **runs `SELECT 1` against Postgres** | `200` | `503` database unreachable |
 | `GET` | `/tasks` | Lists all tasks. Supports `?done=`, `?search=`, `?sort=`, `?limit=`, `?offset=` | `200` | `400` invalid query |
@@ -492,27 +622,37 @@ Dockerfile                   how the api image is built (multi-stage)
 .dockerignore                what never goes into the image — including .env
 .env.example                 the keys, with placeholder values. Committed.
 .env                         the real values. Git-ignored, never committed.
-server.js                    entry point: ready the database, then start listening
+server.js                    entry point: ready the database and Supabase, then listen
 src/
   app.js                     assembles the Express app from the layers
-  config.js                  PORT, DATABASE_URL, OPENAPI_FILE — all env reading
-  errors.js                  HttpError + badRequest/notFound
+  config.js                  PORT, DATABASE_URL, SUPABASE_* — all env reading
+  errors.js                  HttpError + badRequest/unauthorized/notFound
   openapi.js                 reads the spec once at startup
   routes/                    URL -> controller. The map of the API.
+    auth.routes.js           signup, login, logout (logout is guarded)
+    protected.routes.js      router.use(requireAuth) — everything below is locked
+    public.routes.js
     task.routes.js
     meta.routes.js
   controllers/               HTTP in, HTTP out: parse req, pick status code
+    auth.controller.js
+    protected.controller.js  three-line handlers that never mention a token
+    public.controller.js
     task.controller.js
     meta.controller.js
   services/                  the rules: validation, "does this exist"
+    auth.service.js          the only file that talks to Supabase Auth
     task.service.js
   repositories/              the only file containing SQL
     task.repository.js
+  auth/
+    supabase.js              the Supabase client + the startup reachability check
   db/
     connection.js            the pg pool, the transaction helper, the startup retry
     schema.js                table, indexes, seed rows
     index.js                 initDatabase(): wait, apply schema, seed if empty
   middleware/
+    require-auth.js          the whole security perimeter: extract, verify, req.user
     not-found.js             unmatched URL -> a JSON 404
     error-handler.js         thrown error -> a JSON response
 openapi.json                 the OpenAPI 3.0 spec Swagger UI renders at /docs

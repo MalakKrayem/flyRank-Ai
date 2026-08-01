@@ -16,6 +16,15 @@ services:
       # the api container — an address where nothing is listening on 5432. This
       # one line is the mistake everybody makes once.
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-tasks}
+
+      # Supabase is the one thing in this file that is not a container. It is a
+      # service on the internet, so both lanes — compose and `npm start` — read
+      # the same two values straight out of .env, unchanged. No default and no
+      # fallback, for the same reason POSTGRES_PASSWORD has none: a missing key
+      # should stop the stack with a sentence, not start an API whose every
+      # protected route answers 500.
+      SUPABASE_URL: ${SUPABASE_URL:?set SUPABASE_URL in .env — copy .env.example}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?set SUPABASE_ANON_KEY in .env — copy .env.example}
     depends_on:
       db:
         # Not the bare `depends_on: [db]`. On its own that waits for the container
