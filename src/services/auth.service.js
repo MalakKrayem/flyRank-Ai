@@ -77,6 +77,26 @@ export const verifyToken = async (token) => {
   return publicUser(data.user);
 };
 
+// Ending a session, which needs the token rather than the client's memory.
+//
+// The obvious call — `supabase.auth.signOut()` — does nothing here, and reading
+// the SDK shows why: it looks up the *stored* session to find which token to
+// revoke, and this client stores none (see auth/supabase.js on why a server must
+// not). With no session found it returns success having called nothing, which is
+// the worst kind of bug: a logout that reports 204 and revokes nothing.
+//
+// `admin.signOut(jwt)` is the same POST /logout with the token passed in
+// explicitly. The `admin` namespace is a naming accident rather than a
+// permission level — it is authorised by the user's own token, and no
+// service_role key is involved.
+export const logOut = async (token) => {
+  const { error } = await supabase.auth.admin.signOut(token);
+
+  // The guard already proved this token was good a moment ago, so a failure now
+  // is a real one and not a stale pass.
+  if (error) throw new HttpError(error.status ?? 500, error.message);
+};
+
 // What a client is allowed to learn about the account behind a token. Supabase's
 // user object carries more than that — internal identity records, the raw app
 // metadata — and none of it has a reason to cross the wire.

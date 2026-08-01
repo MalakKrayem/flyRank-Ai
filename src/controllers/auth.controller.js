@@ -15,3 +15,12 @@ export const logIn = async (req, res) => {
   // token rather than for a resource at a new address.
   res.json(await authService.logIn(req.body));
 };
+
+export const logOut = async (req, res) => {
+  // req.accessToken exists because requireAuth ran first — which is also why
+  // this handler can be sure there is a real session to end.
+  await authService.logOut(req.accessToken);
+
+  // 204 No Content: it worked, and there is genuinely nothing to say about it.
+  res.status(204).end();
+};
