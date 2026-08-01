@@ -24,6 +24,7 @@
   },
   "homepage": "https://github.com/MalakKrayem/flyRank-Ai#readme",
   "dependencies": {
+    "@supabase/supabase-js": "^2.111.0",
     "express": "^5.2.1",
     "pg": "^8.22.0",
     "swagger-ui-express": "^5.0.1"
