@@ -58,6 +58,25 @@ export const logIn = async (body) => {
   };
 };
 
+// The guard's one question: is this token real, and whose is it?
+//
+// This is a network call to Supabase, not local arithmetic, and that is the
+// whole reason the answer can be trusted. A JWT is signed but not secret —
+// anyone can read its payload, and a forged one is only detectable by checking
+// the signature against the key that made it. Supabase holds that key.
+//
+// `error || !data?.user` is one condition on purpose. The SDK reports a rejected
+// token through `error`, but a client that had no session at all can also come
+// back as a clean response with a null user. Trusting `data.user` without
+// checking both is how a route ends up "authenticating" nobody.
+export const verifyToken = async (token) => {
+  const { data, error } = await supabase.auth.getUser(token);
+
+  if (error || !data?.user) throw unauthorized('Invalid or expired token');
+
+  return publicUser(data.user);
+};
+
 // What a client is allowed to learn about the account behind a token. Supabase's
 // user object carries more than that — internal identity records, the raw app
 // metadata — and none of it has a reason to cross the wire.

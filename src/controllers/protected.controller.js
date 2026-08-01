@@ -1,8 +1,11 @@
+import * as authService from '../services/auth.service.js';
 import { unauthorized } from '../errors.js';
 
-// Stage 2: the door is locked, but the guard cannot read yet. All this checks is
-// that *a* token was presented in the right place and the right shape — not that
-// it is real. Stage 3 hands the token to Supabase and gets a trustworthy answer.
+// Two different questions, answered in order, and worth keeping apart. Reading
+// the header asks "was a token presented, in the right place and the right
+// shape?" — a matter of syntax this server can settle alone. Verifying it asks
+// "is it real, and whose is it?" — a matter of cryptography only Supabase can
+// settle. Both answers are 401, for opposite reasons.
 //
 // The regex is doing more than it looks. `Authorization: <token>` with no scheme
 // is the single most common way a hand-written extractor goes wrong: split on a
@@ -22,10 +25,8 @@ export const readBearerToken = (req) => {
   return match[1];
 };
 
-export const profile = (req, res) => {
-  readBearerToken(req);
+export const profile = async (req, res) => {
+  const user = await authService.verifyToken(readBearerToken(req));
 
-  // Deliberately not the real profile yet. Nothing here has checked *whose*
-  // token this is, so there is nothing honest to say about the user.
-  res.json({ message: 'A token was presented. Nothing has verified it yet.' });
+  res.json({ user });
 };
